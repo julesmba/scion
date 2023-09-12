@@ -208,6 +208,7 @@ func TestSetInfoField(t *testing.T) {
 	}
 }
 
+// Will also need test to check entire RawPacket is correct
 func TestSetHopField(t *testing.T) {
 	testCases := map[string]struct {
 		idx       int

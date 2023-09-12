@@ -18,8 +18,10 @@ package router
 import (
 	"bytes"
 	"context"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash"
@@ -47,6 +49,7 @@ import (
 	"github.com/scionproto/scion/pkg/slayers/path"
 	"github.com/scionproto/scion/pkg/slayers/path/empty"
 	"github.com/scionproto/scion/pkg/slayers/path/epic"
+	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 	"github.com/scionproto/scion/pkg/slayers/path/onehop"
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
 	"github.com/scionproto/scion/pkg/spao"
@@ -105,6 +108,7 @@ type DataPlane struct {
 	internalNextHops  map[uint16]*net.UDPAddr
 	svc               *services
 	macFactory        func() hash.Hash
+	prfFactory        func() cipher.Block
 	bfdSessions       map[uint16]bfdSession
 	localIA           addr.IA
 	mtx               sync.Mutex
@@ -990,8 +994,10 @@ func newPacketProcessor(d *DataPlane) *scionPacketProcessor {
 	p := &scionPacketProcessor{
 		d:              d,
 		buffer:         gopacket.NewSerializeBuffer(),
+		prf:    d.prfFactory(),
 		mac:            d.macFactory(),
-		macInputBuffer: make([]byte, max(path.MACBufferSize, libepic.MACBufferSize)),
+		macInputBuffer: make([]byte, max(path.MACBufferSize, libepic.MACBufferSize,hummingbird.FlyoverMacBufferSize,hummingbird.AkBufferSize)),
+		hbirdXkbuffer:  make([]uint32, hummingbird.XkBufferSize),
 	}
 	p.scionLayer.RecyclePaths()
 	return p
@@ -1007,6 +1013,8 @@ func (p *scionPacketProcessor) reset() error {
 	p.infoField = path.InfoField{}
 	p.effectiveXover = false
 	p.peering = false
+	p.hasPriority = false
+
 	if err := p.buffer.Clear(); err != nil {
 		return serrors.WrapStr("Failed to clear buffer", err)
 	}
@@ -1058,6 +1066,8 @@ func (p *scionPacketProcessor) processPkt(rawPkt []byte,
 		return p.processSCION()
 	case epic.PathType:
 		return p.processEPIC()
+	case hummingbird.PathType:
+		return p.processHBIRD()
 	default:
 		return processResult{}, serrors.WithCtx(unsupportedPathType, "type", pathType)
 	}
@@ -1183,6 +1193,8 @@ type scionPacketProcessor struct {
 	buffer gopacket.SerializeBuffer
 	// mac is the hasher for the MAC computation.
 	mac hash.Hash
+	// block is the keyed PRF for the hummingbird auth key computation
+	prf cipher.Block
 
 	// scionLayer is the SCION gopacket layer.
 	scionLayer slayers.SCION
@@ -1193,6 +1205,8 @@ type scionPacketProcessor struct {
 
 	// path is the raw SCION path. Will be set during processing.
 	path *scion.Raw
+	// hbirdPath is the raw Hummingbird path. Will be set during processing
+	hbirdPath *hummingbird.Raw
 	// hopField is the current hopField field, is updated during processing.
 	hopField path.HopField
 	// infoField is the current infoField field, is updated during processing.
@@ -1201,6 +1215,10 @@ type scionPacketProcessor struct {
 	effectiveXover bool
 	// peering indicates that the hop field being processed is a peering hop field.
 	peering bool
+	// flyoverField is the flyoverfield containing the current hopfield for hummingbird packets
+	flyoverField hummingbird.FlyoverHopField
+	// hasPriority indicates whether this packet has forwarding priority
+	hasPriority bool
 
 	// cachedMac contains the full 16 bytes of the MAC. Will be set during processing.
 	// For a hop performing an Xover, it is the MAC corresponding to the down segment.
@@ -1515,6 +1533,16 @@ func (p *scionPacketProcessor) currentHopPointer() uint16 {
 		scion.MetaLen + path.InfoLen*p.path.NumINF + path.HopLen*int(p.path.PathMeta.CurrHF))
 }
 
+// Compares two 6 byte arrays.
+// Always returns false if at least one input is of a different length.
+// Returns true if equal, false otherwise.
+func CompareMacThisIsNotConstant(a, b []byte) bool {
+	if len(a) != 6 || len(b) != 6 {
+		return false
+	}
+	return binary.BigEndian.Uint32(a) == binary.BigEndian.Uint32(b) && a[4] == b[4] && a[5] == b[5]
+}
+
 func (p *scionPacketProcessor) verifyCurrentMAC() (processResult, error) {
 	fullMac := path.FullMAC(p.mac, p.infoField, p.hopField, p.macInputBuffer[:path.MACBufferSize])
 	if subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen], fullMac[:path.MacLen]) == 0 {
@@ -1530,11 +1558,7 @@ func (p *scionPacketProcessor) verifyCurrentMAC() (processResult, error) {
 			pointer:  p.currentHopPointer(),
 			cause:    macVerificationFailed,
 		}
-		return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
-	}
-	// Add the full MAC to the SCION packet processor,
-	// such that EPIC does not need to recalculate it.
-	p.cachedMac = fullMac
+		return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired	}
 
 	return processResult{}, nil
 }
@@ -1581,6 +1605,7 @@ func (p *scionPacketProcessor) doXover() (processResult, error) {
 		// TODO parameter problem invalid path
 		return processResult{}, serrors.WrapStr("incrementing path", err)
 	}
+
 	var err error
 	if p.hopField, err = p.path.GetCurrentHopField(); err != nil {
 		// TODO parameter problem invalid path

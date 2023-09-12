@@ -26,8 +26,14 @@ import (
 const (
 	// HopLen is the size of a HopField in bytes.
 	HopLen = 12
+	// FlyoverLen is the length of a FlyoverHopField in bytes
+	FlyoverLen = 20
+	// LineLen is the length of a line for the computation of the hop offset of hummingbird packets
+	LineLen = 4
 	// MacLen is the size of the MAC of each HopField.
 	MacLen = 6
+	// MacOffset is the offset of the MAC field from the beginning of the HopField
+	MacOffset = 6
 )
 
 // MaxTTL is the maximum age of a HopField.
@@ -111,7 +117,7 @@ func (h *HopField) DecodeFromBytes(raw []byte) (err error) {
 // @ decreases
 func (h *HopField) SerializeTo(b []byte) (err error) {
 	if len(b) < HopLen {
-		return serrors.New("buffer for HopField too short", "expected", MacLen, "actual", len(b))
+		return serrors.New("buffer for HopField too short", "expected", HopLen, "actual", len(b))
 	}
 	b[0] = 0
 	if h.EgressRouterAlert {
