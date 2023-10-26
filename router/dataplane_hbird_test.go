@@ -518,10 +518,6 @@ func TestProcessHbirdPacket(t *testing.T) {
 
 	for name, tc := range testCases {
 		name, tc := name, tc
-		if name == "reservation expired" || name == "invalid dest" {
-			// TODO: make scmp packets work with hbird paths to re-enable these
-			continue
-		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dp := tc.prepareDP(ctrl)

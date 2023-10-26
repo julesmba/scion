@@ -2128,6 +2128,8 @@ func (p *slowPathPacketProcessor) prepareSCMP(
 				"path type", pathType)
 		}
 		path = epicPath.ScionPath
+	case hummingbird.PathType:
+		return p.prepareHbirdSCMP(typ, code, scmpP, cause)
 	default:
 		return nil, serrors.WithCtx(cannotRoute, "details", "unsupported path type",
 			"path type", pathType)

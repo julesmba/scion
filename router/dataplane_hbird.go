@@ -8,12 +8,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/gopacket"
+	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
 	"github.com/scionproto/scion/pkg/slayers"
 	"github.com/scionproto/scion/pkg/slayers/path"
 	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
+	"github.com/scionproto/scion/pkg/spao"
 )
 
 // SetSecretValue sets the secret value for the PRF function used to compute the Hummingbird Auth Key
@@ -435,4 +438,197 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 		cause:    cannotRoute,
 	}
 	return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
+}
+
+// Functions for SCMP packets preparation
+
+func determinePeerHbird(pathMeta hummingbird.MetaHdr, inf path.InfoField) (bool, error) {
+	if !inf.Peer {
+		return false, nil
+	}
+
+	if pathMeta.SegLen[0] == 0 {
+		return false, errPeeringEmptySeg0
+	}
+	if pathMeta.SegLen[1] == 0 {
+		return false, errPeeringEmptySeg1
+
+	}
+	if pathMeta.SegLen[2] != 0 {
+		return false, errPeeringNonemptySeg2
+	}
+
+	// The peer hop fields are the last hop field on the first path
+	// segment (at SegLen[0] - 1) and the first hop field of the second
+	// path segment (at SegLen[0]). The below check applies only
+	// because we already know this is a well-formed peering path.
+	currHF := pathMeta.CurrHF
+	segLen := pathMeta.SegLen[0]
+	return currHF == segLen-3 || currHF == segLen, nil
+}
+
+func (p *slowPathPacketProcessor) prepareHbirdSCMP(
+	typ slayers.SCMPType,
+	code slayers.SCMPCode,
+	scmpP gopacket.SerializableLayer,
+	cause error,
+) ([]byte, error) {
+
+	path, ok := p.scionLayer.Path.(*hummingbird.Raw)
+	if !ok {
+		return nil, serrors.WithCtx(cannotRoute, "details", "unsupported path type",
+			"path type", hummingbird.PathType)
+	}
+	decPath, err := path.ToDecoded()
+	if err != nil {
+		return nil, serrors.Wrap(cannotRoute, err, "details", "decoding raw path")
+	}
+	revPathTmp, err := decPath.Reverse()
+	if err != nil {
+		return nil, serrors.Wrap(cannotRoute, err, "details", "reversing path for SCMP")
+	}
+	revPath := revPathTmp.(*hummingbird.Decoded)
+
+	peering, err := determinePeerHbird(revPath.PathMeta, revPath.InfoFields[revPath.PathMeta.CurrINF])
+	if err != nil {
+		return nil, serrors.Wrap(cannotRoute, err, "details", "peering cannot be determined")
+	}
+
+	// Revert potential path segment switches that were done during processing.
+	if revPath.IsXover() && !peering {
+		// An effective cross-over is a change of segment other than at
+		// a peering hop.
+		if err := revPath.IncPath(3); err != nil {
+			return nil, serrors.Wrap(cannotRoute, err, "details", "reverting cross over for SCMP")
+		}
+	}
+
+	// If the packet is sent to an external router, we need to increment the
+	// path to prepare it for the next hop.
+	_, external := p.d.external[p.ingressID]
+	if external {
+		infoField := &revPath.InfoFields[revPath.PathMeta.CurrINF]
+		if infoField.ConsDir && !peering {
+			hopField := revPath.HopFields[revPath.PathMeta.CurrHF]
+			infoField.UpdateSegID(hopField.HopField.Mac)
+		}
+		if err := revPath.IncPath(3); err != nil {
+			return nil, serrors.Wrap(cannotRoute, err, "details", "incrementing path for SCMP")
+		}
+	} //TODO else, make sure MAC is deaggregated?
+
+	var scionL slayers.SCION
+	scionL.FlowID = p.scionLayer.FlowID
+	scionL.TrafficClass = p.scionLayer.TrafficClass
+	scionL.PathType = revPath.Type()
+	scionL.Path = revPath
+	scionL.DstIA = p.scionLayer.SrcIA
+	scionL.SrcIA = p.d.localIA
+	srcA, err := p.scionLayer.SrcAddr()
+	if err != nil {
+		return nil, serrors.Wrap(cannotRoute, err, "details", "extracting src addr")
+	}
+	if err := scionL.SetDstAddr(srcA); err != nil {
+		return nil, serrors.Wrap(cannotRoute, err, "details", "setting dest addr")
+	}
+	if err := scionL.SetSrcAddr(addr.HostIP(p.d.internalIP)); err != nil {
+		return nil, serrors.Wrap(cannotRoute, err, "details", "setting src addr")
+	}
+	scionL.NextHdr = slayers.L4SCMP
+
+	typeCode := slayers.CreateSCMPTypeCode(typ, code)
+	scmpH := slayers.SCMP{TypeCode: typeCode}
+	scmpH.SetNetworkLayerForChecksum(&scionL)
+
+	needsAuth := false
+	if p.d.ExperimentalSCMPAuthentication {
+		// Error messages must be authenticated.
+		// Traceroute are OPTIONALLY authenticated ONLY IF the request
+		// was authenticated.
+		// TODO(JordiSubira): Reuse the key computed in p.hasValidAuth
+		// if SCMPTypeTracerouteReply to create the response.
+		needsAuth = cause != nil ||
+			(scmpH.TypeCode.Type() == slayers.SCMPTypeTracerouteReply &&
+				p.hasValidAuth(time.Now()))
+	}
+
+	var quote []byte
+	if cause != nil {
+		// add quote for errors.
+		hdrLen := slayers.CmnHdrLen + scionL.AddrHdrLen() + scionL.Path.Len()
+		if needsAuth {
+			hdrLen += e2eAuthHdrLen
+		}
+		switch scmpH.TypeCode.Type() {
+		case slayers.SCMPTypeExternalInterfaceDown:
+			hdrLen += 20
+		case slayers.SCMPTypeInternalConnectivityDown:
+			hdrLen += 28
+		default:
+			hdrLen += 8
+		}
+		quote = p.rawPkt
+		maxQuoteLen := slayers.MaxSCMPPacketLen - hdrLen
+		if len(quote) > maxQuoteLen {
+			quote = quote[:maxQuoteLen]
+		}
+	}
+
+	if err := p.buffer.Clear(); err != nil {
+		return nil, err
+	}
+	sopts := gopacket.SerializeOptions{
+		ComputeChecksums: true,
+		FixLengths:       true,
+	}
+	// First write the SCMP message only without the SCION header(s) to get a buffer that we
+	// can (re-)use as input in the MAC computation.
+	// XXX(matzf) could we use iovec gather to avoid copying quote?
+	err = gopacket.SerializeLayers(p.buffer, sopts, &scmpH, scmpP, gopacket.Payload(quote))
+	if err != nil {
+		return nil, serrors.Wrap(cannotRoute, err, "details", "serializing SCMP message")
+	}
+
+	if needsAuth {
+		var e2e slayers.EndToEndExtn
+		scionL.NextHdr = slayers.End2EndClass
+
+		now := time.Now()
+		// srcA == scionL.DstAddr
+		key, err := p.drkeyProvider.GetASHostKey(now, scionL.DstIA, srcA)
+		if err != nil {
+			return nil, serrors.Wrap(cannotRoute, err, "details", "retrieving DRKey")
+		}
+		if err := p.resetSPAOMetadata(key, now); err != nil {
+			return nil, serrors.Wrap(cannotRoute, err, "details", "resetting SPAO header")
+		}
+
+		e2e.Options = []*slayers.EndToEndOption{p.optAuth.EndToEndOption}
+		e2e.NextHdr = slayers.L4SCMP
+		_, err = spao.ComputeAuthCMAC(
+			spao.MACInput{
+				Key:        key.Key[:],
+				Header:     p.optAuth,
+				ScionLayer: &scionL,
+				PldType:    slayers.L4SCMP,
+				Pld:        p.buffer.Bytes(),
+			},
+			p.macInputBuffer,
+			p.optAuth.Authenticator(),
+		)
+		if err != nil {
+			return nil, serrors.Wrap(cannotRoute, err, "details", "computing CMAC")
+		}
+		if err := e2e.SerializeTo(p.buffer, sopts); err != nil {
+			return nil, serrors.Wrap(cannotRoute, err, "details", "serializing SCION E2E headers")
+		}
+	} else {
+		scionL.NextHdr = slayers.L4SCMP
+	}
+	if err := scionL.SerializeTo(p.buffer, sopts); err != nil {
+		return nil, serrors.Wrap(cannotRoute, err, "details", "serializing SCION header")
+	}
+
+	log.Debug("scmp", "typecode", scmpH.TypeCode, "cause", cause)
+	return p.buffer.Bytes(), nil
 }
