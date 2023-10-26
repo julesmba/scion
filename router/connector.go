@@ -177,9 +177,20 @@ func (c *Connector) SetKey(ia addr.IA, index int, key []byte) error {
 	if index != 0 {
 		return serrors.New("currently only index 0 key is supported")
 	}
-	//TODO: have method to set secret value separately
-	c.DataPlane.SetSecretValue(key)
 	return c.DataPlane.SetKey(key)
+}
+
+func (c *Connector) SetSecretValue(ia addr.IA, index int, sv []byte) error {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	log.Debug("Setting secret value", "isd_as", ia, "index", index)
+	if !c.ia.Equal(ia) {
+		return serrors.WithCtx(errMultiIA, "current", c.ia, "new", ia)
+	}
+	if index != 0 {
+		return serrors.New("currently only index 0 secret value is supported")
+	}
+	return c.DataPlane.SetSecretValue(sv)
 }
 
 func (c *Connector) ListInternalInterfaces() ([]control.InternalInterface, error) {

@@ -432,7 +432,7 @@ func TestSlowPathProcessing(t *testing.T) {
 			prepareDP: func(ctrl *gomock.Controller) *DataPlane {
 				return NewDP(nil, nil, mock_router.NewMockBatchConn(ctrl), nil,
 					map[addr.SVC][]*net.UDPAddr{},
-					xtest.MustParseIA("1-ff00:0:110"), nil, testKey)
+					xtest.MustParseIA("1-ff00:0:110"), nil, testKey, testKey)
 			},
 			mockMsg: func() []byte {
 				spkt := prepBaseMsg(t, payload, 0)
@@ -454,7 +454,7 @@ func TestSlowPathProcessing(t *testing.T) {
 			prepareDP: func(ctrl *gomock.Controller) *DataPlane {
 				return NewDP(nil, nil, mock_router.NewMockBatchConn(ctrl), nil,
 					map[addr.SVC][]*net.UDPAddr{},
-					xtest.MustParseIA("1-ff00:0:110"), nil, testKey)
+					xtest.MustParseIA("1-ff00:0:110"), nil, testKey, testKey)
 			},
 			mockMsg: func() []byte {
 				spkt := prepBaseMsg(t, payload, 0)
@@ -476,7 +476,7 @@ func TestSlowPathProcessing(t *testing.T) {
 			prepareDP: func(ctrl *gomock.Controller) *DataPlane {
 				return NewDP(nil, nil, mock_router.NewMockBatchConn(ctrl), nil,
 					map[addr.SVC][]*net.UDPAddr{},
-					xtest.MustParseIA("1-ff00:0:110"), nil, testKey)
+					xtest.MustParseIA("1-ff00:0:110"), nil, testKey, testKey)
 			},
 			mockMsg: func() []byte {
 				spkt := prepBaseMsg(t, payload, 0)

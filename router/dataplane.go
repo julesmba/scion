@@ -148,6 +148,7 @@ var (
 	macVerificationFailed         = errors.New("MAC verification failed")
 	badPacketSize                 = errors.New("bad packet size")
 	slowPathRequired              = errors.New("slow-path required")
+	reservationExpired            = errors.New("current time is outside of reservation validity window")
 
 	// zeroBuffer will be used to reset the Authenticator option in the
 	// scionPacketProcessor.OptAuth
@@ -994,9 +995,9 @@ func newPacketProcessor(d *DataPlane) *scionPacketProcessor {
 	p := &scionPacketProcessor{
 		d:              d,
 		buffer:         gopacket.NewSerializeBuffer(),
-		prf:    d.prfFactory(),
+		prf:            d.prfFactory(),
 		mac:            d.macFactory(),
-		macInputBuffer: make([]byte, max(path.MACBufferSize, libepic.MACBufferSize,hummingbird.FlyoverMacBufferSize,hummingbird.AkBufferSize)),
+		macInputBuffer: make([]byte, max(path.MACBufferSize+hummingbird.FlyoverMacBufferSize+hummingbird.AkBufferSize, libepic.MACBufferSize)),
 		hbirdXkbuffer:  make([]uint32, hummingbird.XkBufferSize),
 	}
 	p.scionLayer.RecyclePaths()
@@ -1009,8 +1010,10 @@ func (p *scionPacketProcessor) reset() error {
 	p.ingressID = 0
 	//p.scionLayer // cannot easily be reset
 	p.path = nil
+	p.hbirdPath = nil
 	p.hopField = path.HopField{}
 	p.infoField = path.InfoField{}
+	p.flyoverField = hummingbird.FlyoverHopField{}
 	p.effectiveXover = false
 	p.peering = false
 	p.hasPriority = false
@@ -1225,6 +1228,8 @@ type scionPacketProcessor struct {
 	cachedMac []byte
 	// macInputBuffer avoid allocating memory during processing.
 	macInputBuffer []byte
+	// hbirdXkbuffer avoid allocating memory during aes computation for hummingbird flyover mac
+	hbirdXkbuffer []uint32
 
 	// bfdLayer is reusable buffer for parsing BFD messages
 	bfdLayer layers.BFD
@@ -1524,11 +1529,17 @@ func (p *scionPacketProcessor) updateNonConsDirIngressSegID() error {
 }
 
 func (p *scionPacketProcessor) currentInfoPointer() uint16 {
+	if p.path == nil {
+		return p.currentHbirdInfoPointer()
+	}
 	return uint16(slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
 		scion.MetaLen + path.InfoLen*int(p.path.PathMeta.CurrINF))
 }
 
 func (p *scionPacketProcessor) currentHopPointer() uint16 {
+	if p.path == nil {
+		return p.currentHbirdHopPointer()
+	}
 	return uint16(slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
 		scion.MetaLen + path.InfoLen*p.path.NumINF + path.HopLen*int(p.path.PathMeta.CurrHF))
 }
@@ -1558,7 +1569,9 @@ func (p *scionPacketProcessor) verifyCurrentMAC() (processResult, error) {
 			pointer:  p.currentHopPointer(),
 			cause:    macVerificationFailed,
 		}
-		return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired	}
+		return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
+	}
+	p.cachedMac = fullMac
 
 	return processResult{}, nil
 }

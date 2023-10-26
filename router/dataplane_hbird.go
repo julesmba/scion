@@ -3,10 +3,12 @@ package router
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/subtle"
 	"encoding/binary"
 	"fmt"
 	"time"
 
+	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
 	"github.com/scionproto/scion/pkg/slayers"
@@ -64,46 +66,70 @@ func (p *scionPacketProcessor) validateReservationExpiry() (processResult, error
 	if startTime.Before(now) && now.Before(endTime) {
 		return processResult{}, nil
 	}
-	return p.packSCMP(slayers.SCMPTypeParameterProblem,
-		slayers.SCMPCodeReservationExpired,
-		&slayers.SCMPParameterProblem{Pointer: p.currentHopPointer()},
-		serrors.New("reservation not valid now", "reservation start", startTime, "reservation end", endTime, "now", now),
-	)
+	log.Debug("SCMP: Reservation is not valid at current time", "reservation start", startTime,
+		"reservation end", endTime, "now", now)
+	slowPathRequest := slowPathRequest{
+		scmpType: slayers.SCMPTypeParameterProblem,
+		code:     slayers.SCMPCodeReservationExpired,
+		pointer:  p.currentHopPointer(),
+		cause:    reservationExpired,
+	}
+	return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
+}
+
+func (p *scionPacketProcessor) currentHbirdInfoPointer() uint16 {
+	return uint16(slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
+		hummingbird.MetaLen + path.InfoLen*int(p.hbirdPath.PathMeta.CurrINF))
+}
+
+func (p *scionPacketProcessor) currentHbirdHopPointer() uint16 {
+	return uint16(slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
+		hummingbird.MetaLen + path.InfoLen*p.hbirdPath.NumINF + hummingbird.LineLen*int(p.hbirdPath.PathMeta.CurrHF))
 }
 
 func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
-	scionMac := path.FullMAC(p.mac, p.infoField, p.hopField, p.macBuffers.scionInput)
+	scionMac := path.FullMAC(p.mac, p.infoField, p.hopField, p.macInputBuffer[:path.MACBufferSize])
 
-	var verified bool
+	var verified int
 	if p.flyoverField.Flyover {
 		ak := hummingbird.DeriveAuthKey(p.prf, p.flyoverField.ResID, p.flyoverField.Bw, p.hopField.ConsIngress, p.hopField.ConsEgress,
-			p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime), p.flyoverField.Duration, p.macBuffers.hbirdAuthInput)
+			p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime), p.flyoverField.Duration,
+			p.macInputBuffer[path.MACBufferSize+hummingbird.FlyoverMacBufferSize:])
 		flyoverMac := hummingbird.FullFlyoverMac(ak, p.scionLayer.DstIA, p.scionLayer.PayloadLen, p.flyoverField.ResStartTime,
-			p.hbirdPath.PathMeta.HighResTS, p.macBuffers.hbirdMacInput, p.macBuffers.hbirdXkbuffer)
+			p.hbirdPath.PathMeta.HighResTS, p.macInputBuffer[path.MACBufferSize:], p.hbirdXkbuffer)
 		// Xor to Aggregate MACs
 		binary.BigEndian.PutUint64(flyoverMac[0:8], binary.BigEndian.Uint64(scionMac[0:8])^binary.BigEndian.Uint64(flyoverMac[0:8]))
 		binary.BigEndian.PutUint32(flyoverMac[8:12], binary.BigEndian.Uint32(scionMac[8:12])^binary.BigEndian.Uint32(flyoverMac[8:12]))
 
-		verified = CompareMac(p.hopField.Mac[:path.MacLen], flyoverMac[:path.MacLen])
+		verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen], flyoverMac[:path.MacLen])
+		if verified == 0 {
+			log.Debug("SCMP: Aggregate MAC verification failed", "expected", fmt.Sprintf("%x", flyoverMac[:path.MacLen]),
+				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]), "cons_dir", p.infoField.ConsDir,
+				"if_id", p.ingressID, "curr_inf", p.hbirdPath.PathMeta.CurrINF,
+				"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID)
+		}
 	} else {
-		verified = CompareMac(p.hopField.Mac[:path.MacLen], scionMac[:path.MacLen])
+		verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen], scionMac[:path.MacLen])
+		if verified == 0 {
+			log.Debug("SCMP: MAC verification failed", "expected", fmt.Sprintf(
+				"%x", scionMac[:path.MacLen]),
+				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]),
+				"cons_dir", p.infoField.ConsDir,
+				"if_id", p.ingressID, "curr_inf", p.path.PathMeta.CurrINF,
+				"curr_hf", p.path.PathMeta.CurrHF, "seg_id", p.infoField.SegID)
+		}
 	}
 	// Add the full MAC to the SCION packet processor,
 	// such that EPIC and hummingbird mac de-aggregation do not need to recalculate it.
 	p.cachedMac = scionMac
-	if !verified {
-		return p.packSCMP(
-			slayers.SCMPTypeParameterProblem,
-			slayers.SCMPCodeInvalidHopFieldMAC,
-			&slayers.SCMPParameterProblem{Pointer: p.currentHopPointer()},
-			serrors.New("MAC verification failed", "expected", fmt.Sprintf(
-				"%x", scionMac[:path.MacLen]),
-				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]),
-				"aggregate with flyover", p.flyoverField.Flyover,
-				"cons_dir", p.infoField.ConsDir,
-				"if_id", p.ingressID, "curr_inf", p.path.PathMeta.CurrINF,
-				"curr_hf", p.path.PathMeta.CurrHF, "seg_id", p.infoField.SegID),
-		)
+	if verified == 0 {
+		slowPathRequest := slowPathRequest{
+			scmpType: slayers.SCMPTypeParameterProblem,
+			code:     slayers.SCMPCodeInvalidHopFieldMAC,
+			pointer:  p.currentHopPointer(),
+			cause:    macVerificationFailed,
+		}
+		return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
 	}
 	return processResult{}, nil
 }
@@ -173,10 +199,14 @@ func (p *scionPacketProcessor) handleHbirdIngressRouterAlert() (processResult, e
 		return processResult{}, nil
 	}
 	*alert = false
-	if err := p.hbirdPath.SetHopField(p.flyoverField, int(p.path.PathMeta.CurrHF)); err != nil {
+	if err := p.hbirdPath.SetHopField(p.flyoverField, int(p.hbirdPath.PathMeta.CurrHF)); err != nil {
 		return processResult{}, serrors.WrapStr("update hop field", err)
 	}
-	return p.handleSCMPTraceRouteRequest(p.ingressID)
+	slowPathRequest := slowPathRequest{
+		typ:         slowPathRouterAlert,
+		interfaceId: p.ingressID,
+	}
+	return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
 }
 
 func (p *scionPacketProcessor) handleHbirdEgressRouterAlert() (processResult, error) {
@@ -189,10 +219,14 @@ func (p *scionPacketProcessor) handleHbirdEgressRouterAlert() (processResult, er
 		return processResult{}, nil
 	}
 	*alert = false
-	if err := p.hbirdPath.SetHopField(p.flyoverField, int(p.path.PathMeta.CurrHF)); err != nil {
+	if err := p.hbirdPath.SetHopField(p.flyoverField, int(p.hbirdPath.PathMeta.CurrHF)); err != nil {
 		return processResult{}, serrors.WrapStr("update hop field", err)
 	}
-	return p.handleSCMPTraceRouteRequest(egressID)
+	slowPathRequest := slowPathRequest{
+		typ:         slowPathRouterAlert,
+		interfaceId: egressID,
+	}
+	return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
 }
 
 func (p *scionPacketProcessor) updateHbirdNonConsDirIngressSegID() error {
@@ -216,18 +250,14 @@ func (p *scionPacketProcessor) deAggregateMac() (processResult, error) {
 	copy(p.hopField.Mac[:], p.cachedMac[:path.MacLen])
 	if err := p.hbirdPath.ReplaceCurrentMac(p.cachedMac); err != nil {
 		//TODO: what SCMP packet should be returned here? Is that even necessary?
-		return p.packSCMP(
-			slayers.SCMPTypeParameterProblem,
-			slayers.SCMPCodeInvalidHopFieldMAC,
-			&slayers.SCMPParameterProblem{Pointer: p.currentHopPointer()},
-			serrors.Join(err, serrors.New("Mac replacement failed")),
-		)
+		log.Debug("Failed to replace MAC after de-aggregation", "error", err.Error())
+		return processResult{}, serrors.Join(err, serrors.New("Mac replacement failed"))
 	}
 	return processResult{}, nil
 }
 
 func (p *scionPacketProcessor) doHbirdXover() (processResult, error) {
-	p.segmentChange = true
+	p.effectiveXover = true
 	n := 3
 	if p.flyoverField.Flyover {
 		n = 5
@@ -397,10 +427,12 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 	if !p.infoField.ConsDir {
 		errCode = slayers.SCMPCodeUnknownHopFieldIngress
 	}
-	return p.packSCMP(
-		slayers.SCMPTypeParameterProblem,
-		errCode,
-		&slayers.SCMPParameterProblem{Pointer: p.currentHopPointer()},
-		cannotRoute,
-	)
+	log.Debug("SCMP: cannot route")
+	slowPathRequest := slowPathRequest{
+		scmpType: slayers.SCMPTypeParameterProblem,
+		code:     errCode,
+		pointer:  p.currentHopPointer(),
+		cause:    cannotRoute,
+	}
+	return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
 }

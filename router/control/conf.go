@@ -37,6 +37,7 @@ type Dataplane interface {
 	AddSvc(ia addr.IA, svc addr.SVC, ip net.IP) error
 	DelSvc(ia addr.IA, svc addr.SVC, ip net.IP) error
 	SetKey(ia addr.IA, index int, key []byte) error
+	SetSecretValue(ia addr.IA, index int, key []byte) error
 }
 
 // LinkInfo contains the information about a link between an internal and
@@ -122,6 +123,9 @@ func ConfigDataplane(dp Dataplane, cfg *Config) error {
 	if len(cfg.MasterKeys.Key0) > 0 {
 		key0 := DeriveHFMacKey(cfg.MasterKeys.Key0)
 		if err := dp.SetKey(cfg.IA, 0, key0); err != nil {
+			return err
+		}
+		if err := dp.SetSecretValue(cfg.IA, 0, key0); err != nil {
 			return err
 		}
 	}

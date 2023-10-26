@@ -289,10 +289,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				return ret
 			},
 			srcInterface: 1,
-			assertFunc: assertIsSCMPError(
-				slayers.SCMPTypeParameterProblem,
-				slayers.SCMPCodeInvalidDestinationAddress,
-			),
+			assertFunc:   assert.Error,
 		},
 		"inbound flyover": {
 			prepareDP: func(ctrl *gomock.Controller) *router.DataPlane {
@@ -389,10 +386,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				return ret
 			},
 			srcInterface: 1,
-			assertFunc: assertIsSCMPError(
-				slayers.SCMPTypeParameterProblem,
-				slayers.SCMPCodeReservationExpired,
-			),
+			assertFunc:   assert.Error,
 		},
 		"brtransit flyover": {
 			prepareDP: func(ctrl *gomock.Controller) *router.DataPlane {
