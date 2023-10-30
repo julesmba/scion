@@ -22,7 +22,7 @@ func RegisterPath() {
 
 // Base holds the basic information that is used by both raw and fully decoded paths.
 type Base struct {
-	// PathMeta is the SCION path meta header. It is always instantiated when
+	// PathMeta is the Hummingbird path meta header. It is always instantiated when
 	// decoding a path from bytes.
 	PathMeta MetaHdr
 	// NumINF is the number of InfoFields in the path.
@@ -101,7 +101,7 @@ func (s *Base) Type() path.Type {
 	return PathType
 }
 
-// MetaHdr is the PathMetaHdr of a SCION (data-plane) path type.
+// MetaHdr is the PathMetaHdr of a Hummingbird (data-plane) path type.
 type MetaHdr struct {
 	CurrINF   uint8
 	CurrHF    uint8

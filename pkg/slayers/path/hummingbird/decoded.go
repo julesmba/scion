@@ -3,6 +3,7 @@ package hummingbird
 import (
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers/path"
+	"github.com/scionproto/scion/pkg/slayers/path/scion"
 )
 
 const (
@@ -23,7 +24,7 @@ type Decoded struct {
 	HopFields []FlyoverHopField
 }
 
-// DecodeFromBytes fully decodes the SCION path into the corresponding fields.
+// DecodeFromBytes fully decodes the Hummingbird path into the corresponding fields.
 func (s *Decoded) DecodeFromBytes(data []byte) error {
 	if err := s.Base.DecodeFromBytes(data); err != nil {
 		return err
@@ -179,4 +180,34 @@ func (s *Decoded) ToRaw() (*Raw, error) {
 		return nil, err
 	}
 	return raw, nil
+}
+
+// Converts a SCiON decoded path to a hummingbird decoded path
+// Does NOT perform a deep copy of hop and info fields.
+// Does NOT set the PathMeta Timestamps and counter
+func (s *Decoded) ConvertFromScionDecoded(d scion.Decoded) {
+	// convert Base
+	s.convertBaseFromScion(d.Base)
+	// transfer Infofields
+	s.InfoFields = d.InfoFields
+	// convert HopFields
+	s.HopFields = make([]FlyoverHopField, d.NumHops)
+	for i, hop := range d.HopFields {
+		s.HopFields[i] = FlyoverHopField{
+			HopField: hop,
+			Flyover:  false,
+		}
+	}
+}
+
+func (s *Decoded) convertBaseFromScion(d scion.Base) {
+	s.Base.NumINF = d.NumINF
+	s.Base.PathMeta.CurrINF = d.PathMeta.CurrINF
+
+	s.Base.NumHops = d.NumHops * 3
+	s.Base.PathMeta.CurrHF = d.PathMeta.CurrHF * 3
+
+	s.Base.PathMeta.SegLen[0] = d.PathMeta.SegLen[0] * 3
+	s.Base.PathMeta.SegLen[1] = d.PathMeta.SegLen[1] * 3
+	s.Base.PathMeta.SegLen[2] = d.PathMeta.SegLen[2] * 3
 }
