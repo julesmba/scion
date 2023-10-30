@@ -4,8 +4,8 @@ go_library(
     name = "go_default_library",
     srcs = [
         "connector.go",
-        "dataplane_hbird.go",
         "dataplane.go",
+        "dataplane_hbird.go",
         "metrics.go",
         "svc.go",
     ],
