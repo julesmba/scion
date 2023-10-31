@@ -118,8 +118,8 @@ func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 				"%x", scionMac[:path.MacLen]),
 				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]),
 				"cons_dir", p.infoField.ConsDir,
-				"if_id", p.ingressID, "curr_inf", p.path.PathMeta.CurrINF,
-				"curr_hf", p.path.PathMeta.CurrHF, "seg_id", p.infoField.SegID)
+				"if_id", p.ingressID, "curr_inf", p.hbirdPath.PathMeta.CurrINF,
+				"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID)
 		}
 	}
 	// Add the full MAC to the SCION packet processor,
@@ -163,6 +163,26 @@ func (p *scionPacketProcessor) validateHbirdSrcDstIA() (processResult, error) {
 	return processResult{}, nil
 }
 
+func (p *scionPacketProcessor) ingressInterfaceHbird() uint16 {
+	info := p.infoField
+	hop := p.flyoverField
+	if !p.peering && p.hbirdPath.IsFirstHopAfterXover() {
+		var err error
+		info, err = p.hbirdPath.GetInfoField(int(p.hbirdPath.PathMeta.CurrINF) - 1)
+		if err != nil { // cannot be out of range
+			panic(err)
+		}
+		hop, err = p.hbirdPath.GetHopField(int(p.hbirdPath.PathMeta.CurrHF) - 3)
+		if err != nil { // cannot be out of range
+			panic(err)
+		}
+	}
+	if info.ConsDir {
+		return hop.HopField.ConsIngress
+	}
+	return hop.HopField.ConsEgress
+}
+
 // validateTransitUnderlaySrc checks that the source address of transit packets
 // matches the expected sibling router.
 // Provided that underlying network infrastructure prevents address spoofing,
@@ -173,7 +193,7 @@ func (p *scionPacketProcessor) validateHbirdTransitUnderlaySrc() (processResult,
 		// not a transit packet, nothing to check
 		return processResult{}, nil
 	}
-	pktIngressID := p.ingressInterface()
+	pktIngressID := p.ingressInterfaceHbird()
 	expectedSrc, ok := p.d.internalNextHops[pktIngressID]
 	if !ok || !expectedSrc.IP.Equal(p.srcAddr.IP) {
 		// Drop
@@ -340,14 +360,8 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 	if err := p.updateHbirdNonConsDirIngressSegID(); err != nil {
 		return processResult{}, err
 	}
-	if p.flyoverField.Flyover {
-		if r, err := p.verifyCurrentHbirdMAC(); err != nil {
-			return r, err
-		}
-	} else {
-		if r, err := p.verifyCurrentMAC(); err != nil {
-			return r, err
-		}
+	if r, err := p.verifyCurrentHbirdMAC(); err != nil {
+		return r, err
 	}
 	if p.hasPriority && p.flyoverField.Flyover {
 		// TODO: current implementation (which is in line with design) allows for an attack surface where packets with outdated TSs bypass bw check but claim priority to next router
