@@ -91,16 +91,40 @@ func (p *scionPacketProcessor) currentHbirdHopPointer() uint16 {
 }
 
 func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
-	scionMac := path.FullMAC(p.mac, p.infoField, p.hopField, p.macInputBuffer[:path.MACBufferSize])
-
+	var flyoverMac []byte
 	var verified int
+
+	// Compute flyovermac
 	if p.flyoverField.Flyover {
 		ak := hummingbird.DeriveAuthKey(p.prf, p.flyoverField.ResID, p.flyoverField.Bw, p.hopField.ConsIngress, p.hopField.ConsEgress,
 			p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime), p.flyoverField.Duration,
 			p.macInputBuffer[path.MACBufferSize+hummingbird.FlyoverMacBufferSize:])
-		flyoverMac := hummingbird.FullFlyoverMac(ak, p.scionLayer.DstIA, p.scionLayer.PayloadLen, p.flyoverField.ResStartTime,
+		flyoverMac = hummingbird.FullFlyoverMac(ak, p.scionLayer.DstIA, p.scionLayer.PayloadLen, p.flyoverField.ResStartTime,
 			p.hbirdPath.PathMeta.HighResTS, p.macInputBuffer[path.MACBufferSize:], p.hbirdXkbuffer)
-		// Xor to Aggregate MACs
+	}
+	// Perform updateHbirdNonConsDirIngressSegID
+	// This needs de-aggregated MAC but needs to be done before scionMac is computed
+	// Therefore, we check this here instead of before MAC computation like in standard SCiON
+	if p.flyoverField.Flyover {
+		// de-aggregate first two bytes of mac
+		p.hopField.Mac[0] ^= flyoverMac[0]
+		p.hopField.Mac[1] ^= flyoverMac[1]
+		err := p.updateHbirdNonConsDirIngressSegID()
+		// restore correct state of MAC field, even if error
+		p.hopField.Mac[0] ^= flyoverMac[0]
+		p.hopField.Mac[1] ^= flyoverMac[1]
+		if err != nil {
+			return processResult{}, err
+		}
+	} else {
+		if err := p.updateHbirdNonConsDirIngressSegID(); err != nil {
+			return processResult{}, err
+		}
+	}
+	// Compute scionMac
+	scionMac := path.FullMAC(p.mac, p.infoField, p.hopField, p.macInputBuffer[:path.MACBufferSize])
+	// Aggregate MACS and verify if necessary
+	if p.flyoverField.Flyover {
 		binary.BigEndian.PutUint64(flyoverMac[0:8], binary.BigEndian.Uint64(scionMac[0:8])^binary.BigEndian.Uint64(flyoverMac[0:8]))
 		binary.BigEndian.PutUint32(flyoverMac[8:12], binary.BigEndian.Uint32(scionMac[8:12])^binary.BigEndian.Uint32(flyoverMac[8:12]))
 
@@ -108,8 +132,13 @@ func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 		if verified == 0 {
 			log.Debug("SCMP: Aggregate MAC verification failed", "expected", fmt.Sprintf("%x", flyoverMac[:path.MacLen]),
 				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]), "cons_dir", p.infoField.ConsDir,
+				"scionMac", fmt.Sprintf("%x", scionMac[:path.MacLen]),
 				"if_id", p.ingressID, "curr_inf", p.hbirdPath.PathMeta.CurrINF,
-				"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID)
+				"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID, "packet length", p.scionLayer.PayloadLen,
+				"dest", p.scionLayer.DstIA, "startTime", p.flyoverField.ResStartTime, "highResTS", p.hbirdPath.PathMeta.HighResTS,
+				"ResID", p.flyoverField.ResID, "Bw", p.flyoverField.Bw, "in", p.hopField.ConsIngress,
+				"Eg", p.hopField.ConsEgress, "start ak", p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime),
+				"Duration", p.flyoverField.Duration)
 		}
 	} else {
 		verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen], scionMac[:path.MacLen])
@@ -136,6 +165,58 @@ func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 	}
 	return processResult{}, nil
 }
+
+// func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
+// 	scionMac := path.FullMAC(p.mac, p.infoField, p.hopField, p.macInputBuffer[:path.MACBufferSize])
+
+// 	var verified int
+// 	if p.flyoverField.Flyover {
+// 		ak := hummingbird.DeriveAuthKey(p.prf, p.flyoverField.ResID, p.flyoverField.Bw, p.hopField.ConsIngress, p.hopField.ConsEgress,
+// 			p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime), p.flyoverField.Duration,
+// 			p.macInputBuffer[path.MACBufferSize+hummingbird.FlyoverMacBufferSize:])
+// 		flyoverMac := hummingbird.FullFlyoverMac(ak, p.scionLayer.DstIA, p.scionLayer.PayloadLen, p.flyoverField.ResStartTime,
+// 			p.hbirdPath.PathMeta.HighResTS, p.macInputBuffer[path.MACBufferSize:], p.hbirdXkbuffer)
+// 		// Xor to Aggregate MACs
+// 		binary.BigEndian.PutUint64(flyoverMac[0:8], binary.BigEndian.Uint64(scionMac[0:8])^binary.BigEndian.Uint64(flyoverMac[0:8]))
+// 		binary.BigEndian.PutUint32(flyoverMac[8:12], binary.BigEndian.Uint32(scionMac[8:12])^binary.BigEndian.Uint32(flyoverMac[8:12]))
+
+// 		verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen], flyoverMac[:path.MacLen])
+// 		if verified == 0 {
+// 			log.Debug("SCMP: Aggregate MAC verification failed", "expected", fmt.Sprintf("%x", flyoverMac[:path.MacLen]),
+// 				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]), "cons_dir", p.infoField.ConsDir,
+// 				"scionMac", fmt.Sprintf("%x", scionMac[:path.MacLen]),
+// 				"if_id", p.ingressID, "curr_inf", p.hbirdPath.PathMeta.CurrINF,
+// 				"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID, "packet length", p.scionLayer.PayloadLen,
+// 				"dest", p.scionLayer.DstIA, "startTime", p.flyoverField.ResStartTime, "highResTS", p.hbirdPath.PathMeta.HighResTS,
+// 				"ResID", p.flyoverField.ResID, "Bw", p.flyoverField.Bw, "in", p.hopField.ConsIngress,
+// 				"Eg", p.hopField.ConsEgress, "start ak", p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime),
+// 				"Duration", p.flyoverField.Duration)
+// 		}
+// 	} else {
+// 		verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen], scionMac[:path.MacLen])
+// 		if verified == 0 {
+// 			log.Debug("SCMP: MAC verification failed", "expected", fmt.Sprintf(
+// 				"%x", scionMac[:path.MacLen]),
+// 				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]),
+// 				"cons_dir", p.infoField.ConsDir,
+// 				"if_id", p.ingressID, "curr_inf", p.hbirdPath.PathMeta.CurrINF,
+// 				"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID)
+// 		}
+// 	}
+// 	// Add the full MAC to the SCION packet processor,
+// 	// such that EPIC and hummingbird mac de-aggregation do not need to recalculate it.
+// 	p.cachedMac = scionMac
+// 	if verified == 0 {
+// 		slowPathRequest := slowPathRequest{
+// 			scmpType: slayers.SCMPTypeParameterProblem,
+// 			code:     slayers.SCMPCodeInvalidHopFieldMAC,
+// 			pointer:  p.currentHopPointer(),
+// 			cause:    macVerificationFailed,
+// 		}
+// 		return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
+// 	}
+// 	return processResult{}, nil
+// }
 
 func (p *scionPacketProcessor) validateHbirdSrcDstIA() (processResult, error) {
 	srcIsLocal := (p.scionLayer.SrcIA == p.d.localIA)
@@ -172,6 +253,7 @@ func (p *scionPacketProcessor) ingressInterfaceHbird() uint16 {
 		if err != nil { // cannot be out of range
 			panic(err)
 		}
+		// Previous hop should always be a non-flyover field, as flyover is transferred to second hop on xover
 		hop, err = p.hbirdPath.GetHopField(int(p.hbirdPath.PathMeta.CurrHF) - 3)
 		if err != nil { // cannot be out of range
 			panic(err)
@@ -329,6 +411,7 @@ func (p *scionPacketProcessor) processHbirdEgress() error {
 func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 	var ok bool
 	p.hbirdPath, ok = p.scionLayer.Path.(*hummingbird.Raw)
+	log.Debug("raw path", "path", fmt.Sprintf("%x", p.hbirdPath.Raw))
 	if !ok {
 		// TODO(lukedirtwalker) parameter problem invalid path?
 		return processResult{}, malformedPath
@@ -357,9 +440,9 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 			return r, err
 		}
 	}
-	if err := p.updateHbirdNonConsDirIngressSegID(); err != nil {
-		return processResult{}, err
-	}
+	// if err := p.updateHbirdNonConsDirIngressSegID(); err != nil {
+	// 	return processResult{}, err
+	// }
 	if r, err := p.verifyCurrentHbirdMAC(); err != nil {
 		return r, err
 	}

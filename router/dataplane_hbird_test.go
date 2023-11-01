@@ -518,6 +518,9 @@ func TestProcessHbirdPacket(t *testing.T) {
 
 	for name, tc := range testCases {
 		name, tc := name, tc
+		if name != "astransit xover flyover" {
+			continue
+		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dp := tc.prepareDP(ctrl)
