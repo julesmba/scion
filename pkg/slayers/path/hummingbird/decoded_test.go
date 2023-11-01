@@ -81,8 +81,9 @@ var decodedHbirdTestPath = &hummingbird.Decoded{
 		NumINF:  2,
 		NumHops: 16,
 	},
-	InfoFields: testInfoFields,
-	HopFields:  testFlyoverFields,
+	InfoFields:     testInfoFields,
+	HopFields:      testFlyoverFields,
+	FirstHopPerSeg: [2]uint8{2, 0},
 }
 
 var emptyDecodedTestPath = &hummingbird.Decoded{

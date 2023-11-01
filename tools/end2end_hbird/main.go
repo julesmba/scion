@@ -48,8 +48,9 @@ import (
 )
 
 const (
-	ping = "ping"
-	pong = "pong"
+	ping           = "ping"
+	pong           = "pong"
+	pingPayloadLen = 113
 )
 
 type Ping struct {
@@ -71,6 +72,8 @@ var (
 	scionPacketConnMetrics = metrics.NewSCIONPacketConnMetrics()
 	scmpErrorsCounter      = scionPacketConnMetrics.SCMPErrors
 	epic                   bool
+	fullReservation        bool
+	partialReservation     bool
 )
 
 func main() {
@@ -296,15 +299,62 @@ func (c *client) attemptRequest(n int) bool {
 	}
 	span, ctx = tracing.StartSpanFromCtx(ctx, "attempt.ping")
 	defer span.Finish()
-
+	//TODO: use actaul flags to set
+	fullReservation = false
+	partialReservation = true
 	// Convert path to Hummingbird path
 	if path != nil {
-		path, err = hummingbird.ConvertToHbirdPath(path)
-		if err != nil {
-			logger.Error("Error converting path to Hummingbird", "err", err)
-			return false
+		if !fullReservation && !partialReservation {
+			// Standard path, no reservations at all
+			path, err = hummingbird.ConvertToHbirdPath(path)
+			if err != nil {
+				logger.Error("Error converting path to Hummingbird", "err", err)
+				return false
+			}
+			remote.Path = path.Dataplane()
+		} else if fullReservation {
+			hbirdClient := hummingbird.HummingbirdClient{}
+			if err := hbirdClient.PrepareHbirdPath(path); err != nil {
+				logger.Error("Error converting path to Hummingbird", "err", err)
+				return false
+			}
+			secs := uint32(time.Now().Unix())
+			if err := hbirdClient.RequestReservationsAllHops(16, secs, 120); err != nil {
+				logger.Error("Error requesting reservations", "err", err)
+				return false
+			}
+			// TODO: add step to receive reservation???
+
+			path, err = hbirdClient.FinalizePath(path, pingPayloadLen)
+			if err != nil {
+				logger.Error("Error assembling hummingbird path", "err", err)
+			}
+			remote.Path = path.Dataplane()
+		} else {
+			//partial reservations, alternating resrved and not reserved
+			hbirdClient := hummingbird.HummingbirdClient{}
+			if err := hbirdClient.PrepareHbirdPath(path); err != nil {
+				logger.Error("Error converting path to Hummingbird", "err", err)
+				return false
+			}
+			ases := hbirdClient.GetPathASes()
+			n := len(ases)
+			for i := 1; i < n; i++ {
+				copy(ases[i:n-1], ases[i+1:n])
+				n--
+			}
+			ases = ases[:n]
+			secs := uint32(time.Now().Unix())
+			if err := hbirdClient.RequestReservationForASes(ases, 16, secs, 120); err != nil {
+				logger.Error("Error requesting reservations", "err", err)
+				return false
+			}
+			path, err = hbirdClient.FinalizePath(path, pingPayloadLen)
+			if err != nil {
+				logger.Error("Error assembling hummingbird path", "err", err)
+			}
+			remote.Path = path.Dataplane()
 		}
-		remote.Path = path.Dataplane()
 	}
 
 	// Send ping

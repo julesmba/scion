@@ -22,6 +22,8 @@ type Decoded struct {
 	InfoFields []path.InfoField
 	// HopFields contains all the HopFields of the path.
 	HopFields []FlyoverHopField
+	// FirstHopPerSeg notes the index of the first hopfield of the second and third segment
+	FirstHopPerSeg [2]uint8
 }
 
 // DecodeFromBytes fully decodes the Hummingbird path into the corresponding fields.
@@ -52,6 +54,13 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 		if err := s.HopFields[i].DecodeFromBytes(data[offset : offset+path.FlyoverLen]); err != nil {
 			return err
 		}
+		// Set FirstHopPerSeg
+		if j == int(s.PathMeta.SegLen[1]) {
+			s.FirstHopPerSeg[0] = uint8(i)
+		} else if j == int(s.PathMeta.SegLen[1])+int(s.PathMeta.SegLen[2]) {
+			s.FirstHopPerSeg[1] = uint8(i)
+		}
+
 		if s.HopFields[i].Flyover {
 			offset += path.FlyoverLen
 			j += 5
@@ -198,6 +207,8 @@ func (s *Decoded) ConvertFromScionDecoded(d scion.Decoded) {
 			Flyover:  false,
 		}
 	}
+	s.FirstHopPerSeg[0] = d.Base.PathMeta.SegLen[0]
+	s.FirstHopPerSeg[1] = d.Base.PathMeta.SegLen[0] + d.Base.PathMeta.SegLen[1]
 }
 
 func (s *Decoded) convertBaseFromScion(d scion.Base) {
