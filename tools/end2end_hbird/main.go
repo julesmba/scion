@@ -72,8 +72,8 @@ var (
 	scionPacketConnMetrics = metrics.NewSCIONPacketConnMetrics()
 	scmpErrorsCounter      = scionPacketConnMetrics.SCMPErrors
 	epic                   bool
-	fullReservation        bool
-	partialReservation     bool
+	flyovers               bool
+	partial                bool
 )
 
 func main() {
@@ -109,6 +109,8 @@ func addFlags() {
 	flag.Var(&remote, "remote", "(Mandatory for clients) address to connect to")
 	flag.Var(timeout, "timeout", "The timeout for each attempt")
 	flag.BoolVar(&epic, "epic", false, "Enable EPIC.")
+	flag.BoolVar(&flyovers, "flyovers", true, "Enable Flyovers")
+	flag.BoolVar(&partial, "partial", false, "If true, only subset of hops have flyovers")
 }
 
 func validateFlags() {
@@ -299,12 +301,9 @@ func (c *client) attemptRequest(n int) bool {
 	}
 	span, ctx = tracing.StartSpanFromCtx(ctx, "attempt.ping")
 	defer span.Finish()
-	//TODO: use actaul flags to set
-	fullReservation = false
-	partialReservation = true
 	// Convert path to Hummingbird path
 	if path != nil {
-		if !fullReservation && !partialReservation {
+		if !flyovers {
 			// Standard path, no reservations at all
 			path, err = hummingbird.ConvertToHbirdPath(path)
 			if err != nil {
@@ -312,7 +311,8 @@ func (c *client) attemptRequest(n int) bool {
 				return false
 			}
 			remote.Path = path.Dataplane()
-		} else if fullReservation {
+		} else if !partial {
+			// full path with reservations
 			hbirdClient := hummingbird.HummingbirdClient{}
 			if err := hbirdClient.PrepareHbirdPath(path); err != nil {
 				logger.Error("Error converting path to Hummingbird", "err", err)

@@ -152,8 +152,7 @@ func (s *Raw) ReplacMac(idx int, mac []byte) error {
 	if idx >= s.NumHops-2 {
 		return serrors.New("HopField index out of bounds", "max", s.NumHops-3, "actual", idx)
 	}
-	offset := s.NumINF*path.InfoLen + path.MacOffset
-	offset += MetaLen + idx*path.LineLen
+	offset := s.NumINF*path.InfoLen + MetaLen + idx*path.LineLen + path.MacOffset
 	if n := copy(s.Raw[offset:offset+path.MacLen], mac[:path.MacLen]); n != path.MacLen {
 		return serrors.New("copied worng number of bytes for mac replacement", "expected", path.MacLen, "actual", n)
 	}
@@ -163,6 +162,15 @@ func (s *Raw) ReplacMac(idx int, mac []byte) error {
 // SetCurrentMac replaces the Mac of the current hopfield by a new mac
 func (s *Raw) ReplaceCurrentMac(mac []byte) error {
 	return s.ReplacMac(int(s.PathMeta.CurrHF), mac)
+}
+
+// Returns a slice of the MAC of the hopfield starting at index idx
+func (s *Raw) GetMac(idx int) ([]byte, error) {
+	if idx >= s.NumHops-2 {
+		return nil, serrors.New("HopField index out of bounds", "max", s.NumHops-3, "actual", idx)
+	}
+	offset := s.NumINF*path.InfoLen + MetaLen + idx*path.LineLen + path.MacOffset
+	return s.Raw[offset : offset+path.MacLen], nil
 }
 
 // SetHopField updates the HopField at a given index.
@@ -204,4 +212,67 @@ func (s *Raw) IsFirstHop() bool {
 // IsLastHop returns whether the current hop is the last hop on the path.
 func (s *Raw) IsLastHop() bool {
 	return int(s.PathMeta.CurrHF) == (s.NumHops-3) || int(s.PathMeta.CurrHF) == (s.NumHops-5)
+}
+
+// Attaches current flyoverfield to next hopfield.
+// DOES NOT adapt MACS.
+func (s *Raw) DoFlyoverXover() error {
+	idx := int(s.Base.PathMeta.CurrHF)
+	if idx >= s.NumHops-7 {
+		return serrors.New("CurrHF out of bounds for flyover crossover", "max", s.NumHops-7, "actual", idx)
+	}
+	if s.PathMeta.CurrINF == 2 {
+		return serrors.New("Cannot do FlyoverXover if CurrINF = 2")
+	}
+	hopOffset := MetaLen + s.NumINF*path.InfoLen + idx*path.LineLen
+	if s.Raw[hopOffset]&0x80 == 0x00 {
+		return serrors.New("Current hop does not have a Flyover")
+	}
+	if s.Raw[hopOffset+FlyoverLen]&0x80 != 0x00 {
+		return serrors.New("Hop after Crossover has Flyover")
+	}
+	// buffer flyover and copy data
+	var t [2 * LineLen]byte
+	copy(t[:], s.Raw[hopOffset+path.HopLen:hopOffset+FlyoverLen])
+	copy(s.Raw[hopOffset+path.HopLen:hopOffset+2*path.HopLen], s.Raw[hopOffset+path.FlyoverLen:hopOffset+path.FlyoverLen+path.HopLen])
+	copy(s.Raw[hopOffset+2*path.HopLen:hopOffset:hopOffset+path.HopLen+path.FlyoverLen], t[:])
+
+	// Unset and Set Flyoverbits
+	s.Raw[hopOffset] &= 0x7f
+	s.Raw[hopOffset+path.HopLen] |= 0x80
+	// Adatp seglens
+	s.Base.PathMeta.SegLen[s.PathMeta.CurrINF] -= 2
+	s.Base.PathMeta.SegLen[s.PathMeta.CurrINF+1] += 2
+	return nil
+}
+
+// Attaches current flyoverfield to previous hopfield
+// DOES NOT adapt MACs
+func (s *Raw) ReverseFlyoverXover() error {
+	idx := int(s.Base.PathMeta.CurrHF)
+	if idx < 6 {
+		return serrors.New("CurrHF too small for reversing flyover crossover", "min", 6, "actual", idx)
+	}
+	if s.PathMeta.CurrINF == 0 {
+		return serrors.New("Cannot reverse Flyover Xover when CurrINF = 0")
+	}
+	hopOffset := MetaLen + s.NumINF*path.InfoLen + idx*path.LineLen
+	if s.Raw[hopOffset]&0x80 == 0x00 {
+		return serrors.New("Current hop does not have a Flyover")
+	}
+	if s.Raw[hopOffset-path.HopLen]&0x80 != 0x00 {
+		return serrors.New("Cannot Reverse Flyover Crossover, flyover bit set where previous hop should be")
+	}
+	var t [FlyoverLen - path.HopLen]byte
+	copy(t[:], s.Raw[hopOffset+path.HopLen:hopOffset+FlyoverLen])
+	copy(s.Raw[hopOffset+FlyoverLen-path.HopLen:hopOffset+FlyoverLen], s.Raw[hopOffset:hopOffset+path.HopLen])
+	copy(s.Raw[hopOffset:hopOffset+FlyoverLen-path.HopLen], t[:])
+	// Set and Unset Flyoverbits
+	s.Raw[hopOffset-path.HopLen] |= 0x80
+	s.Raw[hopOffset+FlyoverLen-path.HopLen] &= 0x7f
+	// Adapt Seglens and CurrHF
+	s.Base.PathMeta.SegLen[s.PathMeta.CurrINF] -= 2
+	s.Base.PathMeta.SegLen[s.PathMeta.CurrINF-1] += 2
+	s.Base.PathMeta.CurrHF += 2
+	return nil
 }

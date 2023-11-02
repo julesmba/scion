@@ -43,6 +43,8 @@ var (
 	cmd         string
 	features    string
 	epic        bool
+	flyovers    bool
+	partial     bool
 )
 
 func getCmd() (string, bool) {
@@ -75,6 +77,8 @@ func realMain() int {
 		"-local", integration.SrcAddrPattern + ":0",
 		"-remote", integration.DstAddrPattern + ":" + integration.ServerPortReplace,
 		fmt.Sprintf("-epic=%t", epic),
+		fmt.Sprintf("-flyovers=%t", flyovers),
+		fmt.Sprintf("-partial=%t", partial),
 	}
 	serverArgs := []string{
 		"-mode", "server",
@@ -116,9 +120,11 @@ func addFlags() {
 	flag.StringVar(&features, "features", "",
 		fmt.Sprintf("enable development features (%v)", feature.String(&feature.Default{}, "|")))
 	flag.BoolVar(&epic, "epic", false, "Enable EPIC.")
+	flag.BoolVar(&flyovers, "flyovers", true, "Enable Flyovers")
+	flag.BoolVar(&partial, "partial", false, "If true, only subset of hops have flyovers")
 }
 
-// runTests runs the end2end tests for all pairs. In case of an error the
+// runTests runs the end2end hbird tests for all pairs. In case of an error the
 // function is terminated immediately.
 func runTests(in integration.Integration, pairs []integration.IAPair) error {
 	return integration.ExecuteTimed(in.Name(), func() error {

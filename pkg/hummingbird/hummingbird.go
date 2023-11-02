@@ -3,13 +3,11 @@ package hummingbird
 import (
 	"crypto/aes"
 	"encoding/binary"
-	"fmt"
 	"math/rand"
 	"strings"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
-	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
@@ -57,8 +55,6 @@ func cheat_auth_key(res *Reservation) (Reservation, error) {
 	key0 := control.DeriveHFMacKey(mkeys.Key0)
 	prf, _ := aes.NewCipher(key0)
 	buffer := make([]byte, 16)
-
-	log.Debug("Computing AK", "ResID", res.ResID, "bw", res.Bw, "ingress", res.Ingress, "Egress", res.Egress, "start", res.StartTime, "Duration", res.Duration)
 	ak := hummingbird.DeriveAuthKey(prf, res.ResID, res.Bw, res.Ingress, res.Egress, res.StartTime, res.Duration, buffer)
 	copy(res.Ak[:], ak[0:16])
 	return *res, nil
@@ -139,9 +135,6 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) error {
 		// Convert path to decoded hbird path
 		scionDec := scion.Decoded{}
 		scionDec.DecodeFromBytes(v.Raw)
-		for _, hop := range scionDec.HopFields {
-			log.Debug("Decoded Scion", "mac", fmt.Sprintf("%x", hop.Mac[:]))
-		}
 		c.dec.ConvertFromScionDecoded(scionDec)
 	case snetpath.Hummingbird:
 		c.dec.DecodeFromBytes(v.Raw)
@@ -158,7 +151,6 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) error {
 	c.macs = make([][6]byte, len(c.dec.HopFields))
 	for i, hop := range c.dec.HopFields {
 		copy(c.macs[i][:], hop.HopField.Mac[:])
-		log.Debug("Scion MAC in prepare", "c.macs i", fmt.Sprintf("%x", c.macs[i]))
 	}
 	// prepare reservations data structure
 	c.reservations = make([]Reservation, len(c.dec.HopFields))
@@ -166,37 +158,7 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) error {
 }
 
 func (c *HummingbirdClient) RequestReservationsAllHops(bw uint16, start uint32, duration uint16) error {
-	inf := 0
-	currseg := 0
-	for i := range c.dec.HopFields {
-		res := Reservation{
-			AS:        c.ases[i],
-			Bw:        bw,
-			StartTime: start,
-			Duration:  duration,
-			Ingress:   c.dec.HopFields[i].HopField.ConsIngress,
-			Egress:    c.dec.HopFields[i].HopField.ConsEgress,
-		}
-		var err error
-		c.reservations[i], err = cheat_auth_key(&res)
-		if err != nil {
-			return err
-		}
-		// set flyover to true and adapt metahdr
-		c.dec.HopFields[i].Flyover = true
-		c.dec.NumHops += 2
-		c.dec.PathMeta.SegLen[inf] += 2
-		currseg += 5
-		if c.dec.PathMeta.SegLen[inf] <= uint8(currseg) {
-			currseg = 0
-			inf += 1
-		}
-		// set other fields
-		c.dec.HopFields[i].Bw = res.Bw
-		c.dec.HopFields[i].Duration = res.Duration
-		c.dec.HopFields[i].ResID = res.ResID
-	}
-	return nil
+	return c.RequestReservationForASes(c.ases, bw, start, duration)
 }
 
 // Returns a copy of all ASes on the current path in order
@@ -282,18 +244,15 @@ func (c *HummingbirdClient) FinalizePath(p snet.Path, pktLen uint16) (snet.Path,
 		c.counter += 1
 	}
 	// compute Macs for Flyovers
-	for i, _ := range c.dec.HopFields {
+	for i := range c.dec.HopFields {
 		if !c.dec.HopFields[i].Flyover {
 			continue
 		}
 		res := c.reservations[i]
 		c.dec.HopFields[i].ResStartTime = uint16(secs - res.StartTime)
-		log.Debug("Computing flyoverMac", "AK", res.Ak[:], "dest", c.dest, "length", pktLen, "start", c.dec.HopFields[i].ResStartTime, "highResTS", millis)
 		flyovermac := hummingbird.FullFlyoverMac(res.Ak[:], c.dest, pktLen, c.dec.HopFields[i].ResStartTime, millis, c.byteBuffer[:], c.xkbuffer[:])
-		log.Debug("Scion MAC in finalize", "c.macs i", fmt.Sprintf("%x", c.macs[i]))
 		binary.BigEndian.PutUint32(c.dec.HopFields[i].HopField.Mac[:4], binary.BigEndian.Uint32(flyovermac[:4])^binary.BigEndian.Uint32(c.macs[i][:4]))
 		binary.BigEndian.PutUint16(c.dec.HopFields[i].HopField.Mac[4:], binary.BigEndian.Uint16(flyovermac[4:])^binary.BigEndian.Uint16(c.macs[i][4:]))
-		log.Debug("Aggregated MAc", "mac", fmt.Sprintf("%x", c.dec.HopFields[i].HopField.Mac[:6]))
 	}
 	dphb.Raw = make([]byte, c.dec.Len())
 	if err := c.dec.SerializeTo(dphb.Raw); err != nil {
