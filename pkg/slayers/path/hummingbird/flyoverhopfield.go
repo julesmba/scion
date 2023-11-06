@@ -8,8 +8,10 @@ import (
 )
 
 const (
-	LineLen    = 4
-	FlyoverLen = 20
+	LineLen      = 4
+	FlyoverLen   = 20
+	HopLines     = 3
+	FlyoverLines = 5
 )
 
 type FlyoverHopField struct {

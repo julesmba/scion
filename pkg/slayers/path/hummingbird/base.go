@@ -63,24 +63,24 @@ func (s *Base) IncPath(n int) error {
 		return serrors.New("Incrementing path over end")
 	}
 	s.PathMeta.CurrHF += uint8(n)
-	s.PathMeta.CurrINF = s.infIndexForHF(s.PathMeta.CurrHF)
+	s.PathMeta.CurrINF = s.InfIndexForHF(s.PathMeta.CurrHF)
 	return nil
 }
 
 // IsXover returns whether we are at a crossover point.
 func (s *Base) IsXover() bool {
 	return s.PathMeta.CurrHF+5 < uint8(s.NumHops) &&
-		(s.PathMeta.CurrINF != s.infIndexForHF(s.PathMeta.CurrHF+3) || s.PathMeta.CurrINF != s.infIndexForHF(s.PathMeta.CurrHF+5))
+		(s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+3) || s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+5))
 
 }
 
 // IsFirstHopAfterXover returns whether this is the first hop field after a crossover point.
 func (s *Base) IsFirstHopAfterXover() bool {
 	return s.PathMeta.CurrINF > 0 && s.PathMeta.CurrHF > 0 &&
-		s.PathMeta.CurrINF-1 == s.infIndexForHF(s.PathMeta.CurrHF-1)
+		s.PathMeta.CurrINF-1 == s.InfIndexForHF(s.PathMeta.CurrHF-1)
 }
 
-func (s *Base) infIndexForHF(hf uint8) uint8 {
+func (s *Base) InfIndexForHF(hf uint8) uint8 {
 	switch {
 	case hf < s.PathMeta.SegLen[0]:
 		return 0

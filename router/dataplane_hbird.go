@@ -96,7 +96,27 @@ func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 
 	// Compute flyovermac
 	if p.flyoverField.Flyover {
-		ak := hummingbird.DeriveAuthKey(p.prf, p.flyoverField.ResID, p.flyoverField.Bw, p.hopField.ConsIngress, p.hopField.ConsEgress,
+		ingress := p.hopField.ConsIngress
+		egress := p.hopField.ConsEgress
+		// Reservations are not bidirectional, reservation ingress and egress are always real ingress and egress
+		if !p.infoField.ConsDir {
+			ingress, egress = egress, ingress
+		}
+		// On crossovers, A Reservation goes from the ingress of the incoming hop to the egress of the outgoing one
+		var err error
+		if p.hbirdPath.IsXover() {
+			egress, err = p.hbirdPath.GetNextEgress()
+			if err != nil {
+				return processResult{}, err
+			}
+		} else if p.hbirdPath.IsFirstHopAfterXover() {
+			ingress, err = p.hbirdPath.GetPreviousIngress()
+			if err != nil {
+				return processResult{}, err
+			}
+		}
+
+		ak := hummingbird.DeriveAuthKey(p.prf, p.flyoverField.ResID, p.flyoverField.Bw, ingress, egress,
 			p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime), p.flyoverField.Duration,
 			p.macInputBuffer[path.MACBufferSize+hummingbird.FlyoverMacBufferSize:])
 		flyoverMac = hummingbird.FullFlyoverMac(ak, p.scionLayer.DstIA, p.scionLayer.PayloadLen, p.flyoverField.ResStartTime,

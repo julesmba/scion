@@ -1,6 +1,8 @@
 package hummingbird
 
 import (
+	"encoding/binary"
+
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers/path"
 )
@@ -110,6 +112,14 @@ func (s *Raw) GetCurrentInfoField() (path.InfoField, error) {
 	return s.GetInfoField(int(s.PathMeta.CurrINF))
 }
 
+// Returns whether the hopfield at the given index is in construction direction
+func (s *Raw) isConsdir(idx uint8) bool {
+	hopIdx := s.Base.InfIndexForHF(idx)
+	infOffset := MetaLen + hopIdx*path.InfoLen
+	return s.Raw[infOffset]&0x1 == 0x1
+
+}
+
 // SetInfoField updates the InfoField at a given index.
 func (s *Raw) SetInfoField(info path.InfoField, idx int) error {
 	if idx >= s.NumINF {
@@ -214,6 +224,40 @@ func (s *Raw) IsLastHop() bool {
 	return int(s.PathMeta.CurrHF) == (s.NumHops-3) || int(s.PathMeta.CurrHF) == (s.NumHops-5)
 }
 
+// Returns the egress interface of the next hop
+func (s *Raw) GetNextEgress() (uint16, error) {
+	idx := int(s.Base.PathMeta.CurrHF)
+	hopOffset := MetaLen + s.NumINF*path.InfoLen + idx*path.LineLen
+	if s.Raw[hopOffset]&0x80 == 0x80 {
+		idx += FlyoverLines
+		hopOffset += FlyoverLines * LineLen
+	} else {
+		idx += HopLines
+		hopOffset += HopLines * LineLen
+	}
+	if idx >= s.NumHops-2 {
+		return 0, serrors.New("HopField index out of bounds", "max", s.NumHops-3, "actual", idx)
+	}
+	if s.isConsdir(uint8(idx)) {
+		return binary.BigEndian.Uint16(s.Raw[hopOffset+4 : hopOffset+6]), nil
+	}
+	return binary.BigEndian.Uint16(s.Raw[hopOffset+2 : hopOffset+4]), nil
+}
+
+// Returns the ingress interface of the previous hop
+// Assumes the previous hop is NOT a flyoverhop
+func (s *Raw) GetPreviousIngress() (uint16, error) {
+	idx := int(s.Base.PathMeta.CurrHF) - HopLines
+	if idx < 0 {
+		return 0, serrors.New("HopField index out of bounds", "min", 0, "actual", idx)
+	}
+	hopOffset := MetaLen + s.NumINF*path.InfoLen + idx*path.LineLen
+	if s.isConsdir(uint8(idx)) {
+		return binary.BigEndian.Uint16(s.Raw[hopOffset+2 : hopOffset+4]), nil
+	}
+	return binary.BigEndian.Uint16(s.Raw[hopOffset+4 : hopOffset+6]), nil
+}
+
 // Attaches current flyoverfield to next hopfield.
 // DOES NOT adapt MACS.
 func (s *Raw) DoFlyoverXover() error {
@@ -235,7 +279,7 @@ func (s *Raw) DoFlyoverXover() error {
 	var t [2 * LineLen]byte
 	copy(t[:], s.Raw[hopOffset+path.HopLen:hopOffset+FlyoverLen])
 	copy(s.Raw[hopOffset+path.HopLen:hopOffset+2*path.HopLen], s.Raw[hopOffset+path.FlyoverLen:hopOffset+path.FlyoverLen+path.HopLen])
-	copy(s.Raw[hopOffset+2*path.HopLen:hopOffset:hopOffset+path.HopLen+path.FlyoverLen], t[:])
+	copy(s.Raw[hopOffset+2*path.HopLen:hopOffset+path.HopLen+path.FlyoverLen], t[:])
 
 	// Unset and Set Flyoverbits
 	s.Raw[hopOffset] &= 0x7f

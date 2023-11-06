@@ -174,12 +174,60 @@ func (c *HummingbirdClient) RequestReservationForASes(asin []addr.IA, bw uint16,
 	j := 0
 	for i := range c.dec.HopFields {
 		if c.ases[i] == asin[j] {
+			if j != 0 && asin[j] == asin[j-1] {
+				// Do not add flyover on second crossover hop
+				continue
+			}
+			var infIdx int
+			var firstHopAfterXover, lastHopBeforeXover bool
+			if i < int(c.dec.FirstHopPerSeg[0]) {
+				infIdx = 0
+				lastHopBeforeXover = (i == int(c.dec.FirstHopPerSeg[0])-1) && i != len(c.dec.HopFields)-1
+			} else if i < int(c.dec.FirstHopPerSeg[1]) {
+				infIdx = 1
+				firstHopAfterXover = i == int(c.dec.FirstHopPerSeg[0])
+				lastHopBeforeXover = i == int(c.dec.FirstHopPerSeg[1])-1 && i != len(c.dec.HopFields)-1
+			} else {
+				infIdx = 2
+				firstHopAfterXover = i == int(c.dec.FirstHopPerSeg[1]) && i != len(c.dec.HopFields)-1
+			}
+
 			c.reservations[i].AS = asin[j]
 			c.reservations[i].Bw = bw
 			c.reservations[i].StartTime = start
 			c.reservations[i].Duration = duration
-			c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsIngress
-			c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsEgress
+			// Set Ingress and Egress interfaces of reservation
+			// If crossover, need to take next/previous hop into account
+			if lastHopBeforeXover {
+				if c.dec.InfoFields[infIdx].ConsDir {
+					c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsIngress
+				} else {
+					c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsEgress
+				}
+				if c.dec.InfoFields[infIdx+1].ConsDir {
+					c.reservations[i].Egress = c.dec.HopFields[i+1].HopField.ConsEgress
+				} else {
+					c.reservations[i].Egress = c.dec.HopFields[i+1].HopField.ConsIngress
+				}
+			} else if firstHopAfterXover {
+				if c.dec.InfoFields[infIdx-1].ConsDir {
+					c.reservations[i].Ingress = c.dec.HopFields[i-1].HopField.ConsIngress
+				} else {
+					c.reservations[i].Ingress = c.dec.HopFields[i-1].HopField.ConsEgress
+				}
+				if c.dec.InfoFields[infIdx].ConsDir {
+					c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsEgress
+				} else {
+					c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsIngress
+				}
+			} else if c.dec.InfoFields[infIdx].ConsDir {
+				c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsIngress
+				c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsEgress
+			} else {
+				c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsEgress
+				c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsIngress
+			}
+
 			var err error
 			c.reservations[i], err = cheat_auth_key(&c.reservations[i])
 			if err != nil {
@@ -188,17 +236,13 @@ func (c *HummingbirdClient) RequestReservationForASes(asin []addr.IA, bw uint16,
 			// set flyover
 			c.dec.HopFields[i].Flyover = true
 			c.dec.NumHops += 2
-			if i < int(c.dec.FirstHopPerSeg[0]) {
-				c.dec.PathMeta.SegLen[0] += 2
-			} else if i < int(c.dec.FirstHopPerSeg[1]) {
-				c.dec.PathMeta.SegLen[1] += 2
-			} else {
-				c.dec.PathMeta.SegLen[2] += 2
-			}
+			c.dec.PathMeta.SegLen[infIdx] += 2
 			// set other fields
 			c.dec.HopFields[i].Bw = c.reservations[i].Bw
 			c.dec.HopFields[i].Duration = c.reservations[i].Duration
 			c.dec.HopFields[i].ResID = c.reservations[i].ResID
+
+			j++
 		}
 
 	}
