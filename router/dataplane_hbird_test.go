@@ -735,6 +735,170 @@ func TestProcessHbirdPacket(t *testing.T) {
 	}
 }
 
+func TestHbirdPacketPath(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	key := []byte("testkey_xxxxxxxx")
+	sv := []byte("test_secretvalue")
+	now := time.Now()
+
+	testCases := map[string]struct {
+		mockMsg       func() *ipv4.Message
+		prepareDPs    func(*gomock.Controller) []*router.DataPlane
+		srcInterfaces []uint16
+	}{
+		"two hops consdir": {
+			mockMsg: func() *ipv4.Message {
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"), xtest.MustParseIA("1-ff00:0:110"))
+				dst := addr.MustParseHost("10.0.100.100")
+				_ = spkt.SetDstAddr(dst)
+
+				dpath := &hummingbird.Decoded{
+					Base: hummingbird.Base{
+						PathMeta: hummingbird.MetaHdr{
+							CurrINF:   0,
+							CurrHF:    0,
+							SegLen:    [3]uint8{6, 0, 0},
+							BaseTS:    util.TimeToSecs(now),
+							HighResTS: 500 << 22,
+						},
+						NumINF:  1,
+						NumHops: 6,
+					},
+					InfoFields: []path.InfoField{
+						{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)},
+					},
+
+					HopFields: []hummingbird.FlyoverHopField{
+						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 40}},
+						{HopField: path.HopField{ConsIngress: 01, ConsEgress: 0}},
+					},
+				}
+				// Compute MACs and increase SegID while doing so
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				// Reset SegID to original value
+				dpath.InfoFields[0].SegID = 0x111
+				ret := toMsg(t, spkt, dpath)
+				return ret
+
+			},
+			prepareDPs: func(*gomock.Controller) []*router.DataPlane {
+				var dps [2]*router.DataPlane
+				dps[0] = router.NewDP(
+					map[uint16]router.BatchConn{
+						uint16(40): mock_router.NewMockBatchConn(ctrl),
+					},
+					map[uint16]topology.LinkType{
+						40: topology.Core,
+					},
+					mock_router.NewMockBatchConn(ctrl),
+					nil, nil, xtest.MustParseIA("1-ff00:0:111"), nil, key, sv)
+
+				dps[1] = router.NewDP(
+					map[uint16]router.BatchConn{
+						uint16(01): mock_router.NewMockBatchConn(ctrl),
+					},
+					map[uint16]topology.LinkType{
+						01: topology.Child,
+					},
+					mock_router.NewMockBatchConn(ctrl),
+					nil, nil, xtest.MustParseIA("1-ff00:0:110"), nil, key, sv)
+
+				return dps[:]
+			},
+			srcInterfaces: []uint16{0, 01},
+		},
+		"two hops non consdir": {
+			mockMsg: func() *ipv4.Message {
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:111"))
+				dst := addr.MustParseHost("10.0.100.100")
+				_ = spkt.SetDstAddr(dst)
+
+				dpath := &hummingbird.Decoded{
+					Base: hummingbird.Base{
+						PathMeta: hummingbird.MetaHdr{
+							CurrINF:   0,
+							CurrHF:    0,
+							SegLen:    [3]uint8{6, 0, 0},
+							BaseTS:    util.TimeToSecs(now),
+							HighResTS: 500 << 22,
+						},
+						NumINF:  1,
+						NumHops: 6,
+					},
+					InfoFields: []path.InfoField{
+						{SegID: 0x111, ConsDir: false, Timestamp: util.TimeToSecs(now)},
+					},
+
+					HopFields: []hummingbird.FlyoverHopField{
+						{HopField: path.HopField{ConsIngress: 01, ConsEgress: 0}},
+						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 40}},
+					},
+				}
+				// Compute MACs and increase SegID while doing so
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				//dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
+
+				ret := toMsg(t, spkt, dpath)
+				return ret
+
+			},
+			prepareDPs: func(*gomock.Controller) []*router.DataPlane {
+				var dps [2]*router.DataPlane
+				dps[0] = router.NewDP(
+					map[uint16]router.BatchConn{
+						uint16(01): mock_router.NewMockBatchConn(ctrl),
+					},
+					map[uint16]topology.LinkType{
+						01: topology.Core,
+					},
+					mock_router.NewMockBatchConn(ctrl),
+					nil, nil, xtest.MustParseIA("1-ff00:0:110"), nil, key, sv)
+
+				dps[1] = router.NewDP(
+					map[uint16]router.BatchConn{
+						uint16(40): mock_router.NewMockBatchConn(ctrl),
+					},
+					map[uint16]topology.LinkType{
+						40: topology.Child,
+					},
+					mock_router.NewMockBatchConn(ctrl),
+					nil, nil, xtest.MustParseIA("1-ff00:0:111"), nil, key, sv)
+
+				return dps[:]
+			},
+			srcInterfaces: []uint16{0, 40},
+		},
+	}
+
+	for name, tc := range testCases {
+		if name != "two hops non consdir" { //Only run test we want to debug
+			continue
+		}
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dps := tc.prepareDPs(ctrl)
+			input := tc.mockMsg()
+			for i, dp := range dps {
+				result, err := dp.ProcessPkt(tc.srcInterfaces[i], input)
+				assert.NoError(t, err)
+
+				input = &ipv4.Message{
+					Buffers: [][]byte{result.OutPkt},
+					Addr:    result.OutAddr,
+					N:       len(result.OutPkt),
+				}
+			}
+		})
+	}
+}
+
 // func TestFlyoverPathReverseLength(t *testing.T) {
 // 	//Performs test by provoking an error and checking the length of the returned SCMP packet
 // 	//Does this with two different length paths, which should be reduced to identical length due to flyover removal
@@ -831,6 +995,21 @@ func prepHbirdMsg(now time.Time) (*slayers.SCION, *hummingbird.Decoded) {
 		HopFields: []hummingbird.FlyoverHopField{},
 	}
 	return spkt, dpath
+}
+
+func prepHbirdSlayers(src, dst addr.IA) *slayers.SCION {
+	spkt := &slayers.SCION{
+		Version:      0,
+		TrafficClass: 0xb8,
+		FlowID:       0xdead,
+		NextHdr:      slayers.L4UDP,
+		PathType:     hummingbird.PathType,
+		DstIA:        dst,
+		SrcIA:        src,
+		Path:         &hummingbird.Raw{},
+		PayloadLen:   18,
+	}
+	return spkt
 }
 
 func computeAggregateMac(t *testing.T, key, sv []byte, dst addr.IA, l uint16, info path.InfoField, hf hummingbird.FlyoverHopField, meta hummingbird.MetaHdr) [path.MacLen]byte {
