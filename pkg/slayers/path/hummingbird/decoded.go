@@ -55,9 +55,9 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 			return err
 		}
 		// Set FirstHopPerSeg
-		if j == int(s.PathMeta.SegLen[1]) {
+		if j == int(s.PathMeta.SegLen[0]) {
 			s.FirstHopPerSeg[0] = uint8(i)
-		} else if j == int(s.PathMeta.SegLen[1])+int(s.PathMeta.SegLen[2]) {
+		} else if j == int(s.PathMeta.SegLen[0])+int(s.PathMeta.SegLen[1]) {
 			s.FirstHopPerSeg[1] = uint8(i)
 		}
 
@@ -76,6 +76,13 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 		i++
 	}
 	s.HopFields = s.HopFields[:i]
+	if s.PathMeta.SegLen[1] == 0 {
+		s.FirstHopPerSeg[0] = s.PathMeta.SegLen[0]
+		s.FirstHopPerSeg[1] = s.PathMeta.SegLen[0]
+	} else if s.PathMeta.SegLen[2] == 0 {
+		s.FirstHopPerSeg[1] = s.PathMeta.SegLen[0] + s.PathMeta.SegLen[1]
+	}
+
 	return nil
 }
 

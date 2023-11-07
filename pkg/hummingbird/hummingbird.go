@@ -176,6 +176,7 @@ func (c *HummingbirdClient) RequestReservationForASes(asin []addr.IA, bw uint16,
 		if c.ases[i] == asin[j] {
 			if j != 0 && asin[j] == asin[j-1] {
 				// Do not add flyover on second crossover hop
+				j++
 				continue
 			}
 			var infIdx int
