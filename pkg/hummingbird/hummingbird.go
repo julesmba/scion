@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
+	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
@@ -125,6 +126,33 @@ type HummingbirdClient struct {
 	xkbuffer   [44]uint32
 }
 
+func (c *HummingbirdClient) parseIAs(ifs []snet.PathInterface) error {
+	c.ases = make([]addr.IA, len(c.dec.HopFields))
+	c.ases[0] = ifs[0].IA
+	i, j := 1, 1
+	for i < len(c.ases) && j < len(ifs) {
+
+		switch true {
+		// First hop after Crossover always has same as as previous hop
+		case (i == int(c.dec.FirstHopPerSeg[0]) && !c.dec.InfoFields[1].Peer) || (i == int(c.dec.FirstHopPerSeg[1])):
+			c.ases[i] = c.ases[i-1]
+			i++
+		// Skip duplicates interfaces. Only duplicates we want are those for Xovers, and we already add these manually above
+		case ifs[j].IA == ifs[j-1].IA:
+			j++
+		default:
+			c.ases[i] = ifs[j].IA
+			i++
+			j++
+		}
+
+	}
+	if i < len(c.ases)-1 {
+		return serrors.New("Not enough ASes for this path")
+	}
+	return nil
+}
+
 func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) error {
 	if p == nil {
 		return serrors.New("Empty path")
@@ -141,10 +169,10 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) error {
 	default:
 		return serrors.New("Unsupported path type")
 	}
+	log.Debug("parsing AS")
 	// Parse the list of ASes on path
-	c.ases = make([]addr.IA, len(p.Metadata().Interfaces))
-	for i, ia := range p.Metadata().Interfaces {
-		c.ases[i] = ia.IA
+	if err := c.parseIAs(p.Metadata().Interfaces); err != nil {
+		return serrors.Join(err, serrors.New("Malformed path"))
 	}
 	c.dest = c.ases[len(c.ases)-1]
 	// cache Scion Hopfield macs
@@ -152,6 +180,7 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) error {
 	for i, hop := range c.dec.HopFields {
 		copy(c.macs[i][:], hop.HopField.Mac[:])
 	}
+	log.Debug("path ASes", "ASes", c.ases)
 	// prepare reservations data structure
 	c.reservations = make([]Reservation, len(c.dec.HopFields))
 	return nil
@@ -169,84 +198,78 @@ func (c *HummingbirdClient) GetPathASes() []addr.IA {
 }
 
 // Requests new reservations for this path for the listed ASes
-// Expects them to be in order.
+// Expects them to be in order without duplicates
 func (c *HummingbirdClient) RequestReservationForASes(asin []addr.IA, bw uint16, start uint32, duration uint16) error {
 	j := 0
 	for i := range c.dec.HopFields {
-		if c.ases[i] == asin[j] {
-			if j != 0 && asin[j] == asin[j-1] {
-				// Do not add flyover on second crossover hop
-				j++
-				continue
+
+		var infIdx int
+		var firstHopAfterXover, lastHopBeforeXover bool
+		if i < int(c.dec.FirstHopPerSeg[0]) {
+			infIdx = 0
+			if !c.dec.InfoFields[0].Peer {
+				lastHopBeforeXover = (i == int(c.dec.FirstHopPerSeg[0])-1) && i < len(c.dec.HopFields)-1
 			}
-			var infIdx int
-			var firstHopAfterXover, lastHopBeforeXover bool
-			if i < int(c.dec.FirstHopPerSeg[0]) {
-				infIdx = 0
-				lastHopBeforeXover = (i == int(c.dec.FirstHopPerSeg[0])-1) && i != len(c.dec.HopFields)-1
-			} else if i < int(c.dec.FirstHopPerSeg[1]) {
-				infIdx = 1
+		} else if i < int(c.dec.FirstHopPerSeg[1]) {
+			infIdx = 1
+			if !c.dec.InfoFields[1].Peer {
 				firstHopAfterXover = i == int(c.dec.FirstHopPerSeg[0])
-				lastHopBeforeXover = i == int(c.dec.FirstHopPerSeg[1])-1 && i != len(c.dec.HopFields)-1
-			} else {
-				infIdx = 2
-				firstHopAfterXover = i == int(c.dec.FirstHopPerSeg[1]) && i != len(c.dec.HopFields)-1
+				lastHopBeforeXover = i == int(c.dec.FirstHopPerSeg[1])-1 && i < len(c.dec.HopFields)-1
 			}
-
-			c.reservations[i].AS = asin[j]
-			c.reservations[i].Bw = bw
-			c.reservations[i].StartTime = start
-			c.reservations[i].Duration = duration
-			// Set Ingress and Egress interfaces of reservation
-			// If crossover, need to take next/previous hop into account
-			if lastHopBeforeXover {
-				if c.dec.InfoFields[infIdx].ConsDir {
-					c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsIngress
-				} else {
-					c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsEgress
-				}
-				if c.dec.InfoFields[infIdx+1].ConsDir {
-					c.reservations[i].Egress = c.dec.HopFields[i+1].HopField.ConsEgress
-				} else {
-					c.reservations[i].Egress = c.dec.HopFields[i+1].HopField.ConsIngress
-				}
-			} else if firstHopAfterXover {
-				if c.dec.InfoFields[infIdx-1].ConsDir {
-					c.reservations[i].Ingress = c.dec.HopFields[i-1].HopField.ConsIngress
-				} else {
-					c.reservations[i].Ingress = c.dec.HopFields[i-1].HopField.ConsEgress
-				}
-				if c.dec.InfoFields[infIdx].ConsDir {
-					c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsEgress
-				} else {
-					c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsIngress
-				}
-			} else if c.dec.InfoFields[infIdx].ConsDir {
-				c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsIngress
-				c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsEgress
-			} else {
-				c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsEgress
-				c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsIngress
+		} else {
+			infIdx = 2
+			if c.dec.InfoFields[2].Peer {
+				return serrors.New("Invalid path, cannot have 3 segments on peering path")
 			}
-
-			var err error
-			c.reservations[i], err = cheat_auth_key(&c.reservations[i])
-			if err != nil {
-				return err
-			}
-			// set flyover
-			c.dec.HopFields[i].Flyover = true
-			c.dec.NumHops += 2
-			c.dec.PathMeta.SegLen[infIdx] += 2
-			// set other fields
-			c.dec.HopFields[i].Bw = c.reservations[i].Bw
-			c.dec.HopFields[i].Duration = c.reservations[i].Duration
-			c.dec.HopFields[i].ResID = c.reservations[i].ResID
-
-			j++
+			firstHopAfterXover = i == int(c.dec.FirstHopPerSeg[1]) && i < len(c.dec.HopFields)-1
+		}
+		// Do not add a reservation to second hop after crossover
+		if firstHopAfterXover {
+			continue
 		}
 
+		c.reservations[i].AS = c.ases[i]
+		c.reservations[i].Bw = bw
+		c.reservations[i].StartTime = start
+		c.reservations[i].Duration = duration
+		// Set Ingress and Egress interfaces of reservation
+		// If crossover, need to take next/previous hop into account
+		if lastHopBeforeXover {
+			if c.dec.InfoFields[infIdx].ConsDir {
+				c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsIngress
+			} else {
+				c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsEgress
+			}
+			if c.dec.InfoFields[infIdx+1].ConsDir {
+				c.reservations[i].Egress = c.dec.HopFields[i+1].HopField.ConsEgress
+			} else {
+				c.reservations[i].Egress = c.dec.HopFields[i+1].HopField.ConsIngress
+			}
+		} else if c.dec.InfoFields[infIdx].ConsDir {
+			c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsIngress
+			c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsEgress
+		} else {
+			c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsEgress
+			c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsIngress
+		}
+
+		var err error
+		c.reservations[i], err = cheat_auth_key(&c.reservations[i])
+		if err != nil {
+			return err
+		}
+		// set flyover
+		c.dec.HopFields[i].Flyover = true
+		c.dec.NumHops += 2
+		c.dec.PathMeta.SegLen[infIdx] += 2
+		// set other fields
+		c.dec.HopFields[i].Bw = c.reservations[i].Bw
+		c.dec.HopFields[i].Duration = c.reservations[i].Duration
+		c.dec.HopFields[i].ResID = c.reservations[i].ResID
+
+		j++
 	}
+
 	return nil
 }
 
