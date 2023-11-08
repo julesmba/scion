@@ -77,10 +77,10 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 	}
 	s.HopFields = s.HopFields[:i]
 	if s.PathMeta.SegLen[1] == 0 {
-		s.FirstHopPerSeg[0] = s.PathMeta.SegLen[0]
-		s.FirstHopPerSeg[1] = s.PathMeta.SegLen[0]
+		s.FirstHopPerSeg[0] = uint8(i)
+		s.FirstHopPerSeg[1] = uint8(i)
 	} else if s.PathMeta.SegLen[2] == 0 {
-		s.FirstHopPerSeg[1] = s.PathMeta.SegLen[0] + s.PathMeta.SegLen[1]
+		s.FirstHopPerSeg[1] = uint8(i)
 	}
 
 	return nil

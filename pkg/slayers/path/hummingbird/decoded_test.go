@@ -83,7 +83,7 @@ var decodedHbirdTestPath = &hummingbird.Decoded{
 	},
 	InfoFields:     testInfoFields,
 	HopFields:      testFlyoverFields,
-	FirstHopPerSeg: [2]uint8{2, 0},
+	FirstHopPerSeg: [2]uint8{2, 4},
 }
 
 var emptyDecodedTestPath = &hummingbird.Decoded{
