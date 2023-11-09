@@ -158,13 +158,7 @@ func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 	// Therefore, we check this here instead of before MAC computation like in standard SCiON
 	if !p.hbirdPath.IsFirstHopAfterXover() {
 		if p.flyoverField.Flyover {
-			// de-aggregate first two bytes of mac
-			p.hopField.Mac[0] ^= flyoverMac[0]
-			p.hopField.Mac[1] ^= flyoverMac[1]
-			err := p.updateHbirdNonConsDirIngressSegID()
-			// restore correct state of MAC field, even if error
-			p.hopField.Mac[0] ^= flyoverMac[0]
-			p.hopField.Mac[1] ^= flyoverMac[1]
+			err := p.updateHbirdNonConsDirIngressSegIDFlyover(flyoverMac)
 			if err != nil {
 				return processResult{}, err
 			}
@@ -335,11 +329,28 @@ func (p *scionPacketProcessor) handleHbirdEgressRouterAlert() (processResult, er
 	return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
 }
 
+func (p *scionPacketProcessor) updateHbirdNonConsDirIngressSegIDFlyover(flyoverMac []byte) error {
+	// against construction dir the ingress router updates the SegID, ifID == 0
+	// means this comes from this AS itself, so nothing has to be done.
+	// If a flyover is presebt, need to first de-aggregate the first two bytes of the mac before updating segID
+	if !p.infoField.ConsDir && p.ingressID != 0 && !p.peering {
+		// de-aggregate first two bytes of mac
+		p.hopField.Mac[0] ^= flyoverMac[0]
+		p.hopField.Mac[1] ^= flyoverMac[1]
+		p.infoField.UpdateSegID(p.hopField.Mac)
+		// restore correct state of MAC field, even if error
+		p.hopField.Mac[0] ^= flyoverMac[0]
+		p.hopField.Mac[1] ^= flyoverMac[1]
+		if err := p.hbirdPath.SetInfoField(p.infoField, int(p.hbirdPath.PathMeta.CurrINF)); err != nil {
+			return serrors.WrapStr("update info field", err)
+		}
+	}
+	return nil
+}
+
 func (p *scionPacketProcessor) updateHbirdNonConsDirIngressSegID() error {
 	// against construction dir the ingress router updates the SegID, ifID == 0
 	// means this comes from this AS itself, so nothing has to be done.
-	// TODO(lukedirtwalker): For packets destined to peer links this shouldn't
-	// be updated.
 	if !p.infoField.ConsDir && p.ingressID != 0 && !p.peering {
 		p.infoField.UpdateSegID(p.hopField.Mac)
 		if err := p.hbirdPath.SetInfoField(p.infoField, int(p.hbirdPath.PathMeta.CurrINF)); err != nil {

@@ -53,7 +53,7 @@ func cheat_auth_key(res *Reservation) (Reservation, error) {
 	if err != nil {
 		return *res, err
 	}
-	key0 := control.DeriveHFMacKey(mkeys.Key0)
+	key0 := control.DeriveHbirdSecretValue(mkeys.Key0)
 	prf, _ := aes.NewCipher(key0)
 	buffer := make([]byte, 16)
 	ak := hummingbird.DeriveAuthKey(prf, res.ResID, res.Bw, res.Ingress, res.Egress, res.StartTime, res.Duration, buffer)

@@ -125,7 +125,8 @@ func ConfigDataplane(dp Dataplane, cfg *Config) error {
 		if err := dp.SetKey(cfg.IA, 0, key0); err != nil {
 			return err
 		}
-		if err := dp.SetSecretValue(cfg.IA, 0, key0); err != nil {
+		keySv := DeriveHbirdSecretValue(cfg.MasterKeys.Key0)
+		if err := dp.SetSecretValue(cfg.IA, 0, keySv); err != nil {
 			return err
 		}
 	}
@@ -158,6 +159,17 @@ func DeriveHFMacKey(k []byte) []byte {
 	// This uses 16B keys with 1000 hash iterations, which is the same as the
 	// defaults used by pycrypto.
 	return pbkdf2.Key(k, hfMacSalt, 1000, 16, sha256.New)
+}
+
+// DeriveHbirdSecretValue derives hummingbird AS secret value from the given key
+func DeriveHbirdSecretValue(k []byte) []byte {
+	if len(k) == 0 {
+		panic("empty key")
+	}
+	hbirdSalt := []byte("Derive hbird sv")
+	// This uses 16B keys with 1000 hash iterations, which is the same as the
+	// defaults used by pycrypto.
+	return pbkdf2.Key(k, hbirdSalt, 1000, 16, sha256.New)
 }
 
 func confExternalInterfaces(dp Dataplane, cfg *Config) error {
