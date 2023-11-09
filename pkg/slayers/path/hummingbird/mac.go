@@ -31,6 +31,7 @@ var ZeroBlock [aes.BlockSize]byte
 // Derive authentication key A_k
 // block is expected to be initialized beforehand with aes.NewCipher(sv),
 // where sv is this AS' secret value
+// Requires buffer to be of size at least AkBufferSize
 func DeriveAuthKey(block cipher.Block, resId uint32, bw, in, eg uint16,
 	startTime uint32, resDuration uint16, buffer []byte) []byte {
 
@@ -50,7 +51,9 @@ func DeriveAuthKey(block cipher.Block, resId uint32, bw, in, eg uint16,
 }
 
 // Computes full flyover mac vk
-// Needs a xkbuffer of 44 uint32s to store the expanded keys for aes
+// Requires buffer to be of size at least FlyoverMacBufferSize
+// Requires xkbuffer to be of size at least XkBufferSize.
+// It is used to store the aes expanded keys
 func FullFlyoverMac(ak []byte, dstIA addr.IA, pktlen uint16, resStartTime uint16,
 	highResTime uint32, buffer []byte, xkbuffer []uint32) []byte {
 

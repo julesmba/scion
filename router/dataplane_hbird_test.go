@@ -3569,11 +3569,14 @@ func computeAggregateMac(t *testing.T, key, sv []byte, dst addr.IA, l uint16, in
 	if !info.ConsDir {
 		ingress, egress = egress, ingress
 	}
+	akBuffer := make([]byte, hummingbird.AkBufferSize)
+	macBuffer := make([]byte, hummingbird.FlyoverMacBufferSize)
+	xkBuffer := make([]uint32, hummingbird.XkBufferSize)
 
 	ak := hummingbird.DeriveAuthKey(block, hf.ResID, hf.Bw, ingress, egress,
-		meta.BaseTS-uint32(hf.ResStartTime), hf.Duration, nil)
+		meta.BaseTS-uint32(hf.ResStartTime), hf.Duration, akBuffer)
 	flyoverMac := hummingbird.FullFlyoverMac(ak, dst, l, hf.ResStartTime,
-		meta.HighResTS, nil, nil)
+		meta.HighResTS, macBuffer, xkBuffer)
 
 	for i, b := range scionMac {
 		scionMac[i] = b ^ flyoverMac[i]
@@ -3592,10 +3595,14 @@ func computeAggregateMacXover(t *testing.T, key, sv []byte, dst addr.IA, l, hin,
 		ingress, egress = egress, ingress
 	}
 
+	akBuffer := make([]byte, hummingbird.AkBufferSize)
+	macBuffer := make([]byte, hummingbird.FlyoverMacBufferSize)
+	xkBuffer := make([]uint32, hummingbird.XkBufferSize)
+
 	ak := hummingbird.DeriveAuthKey(block, hf.ResID, hf.Bw, ingress, egress,
-		meta.BaseTS-uint32(hf.ResStartTime), hf.Duration, nil)
+		meta.BaseTS-uint32(hf.ResStartTime), hf.Duration, akBuffer)
 	flyoverMac := hummingbird.FullFlyoverMac(ak, dst, l, hf.ResStartTime,
-		meta.HighResTS, nil, nil)
+		meta.HighResTS, macBuffer, xkBuffer)
 
 	for i, b := range scionMac {
 		scionMac[i] = b ^ flyoverMac[i]
@@ -3609,10 +3616,14 @@ func aggregateOntoScionMac(t *testing.T, sv []byte, dst addr.IA, l, hin, heg uin
 	require.NoError(t, err)
 	ingress, egress := hin, heg
 
+	akBuffer := make([]byte, hummingbird.AkBufferSize)
+	macBuffer := make([]byte, hummingbird.FlyoverMacBufferSize)
+	xkBuffer := make([]uint32, hummingbird.XkBufferSize)
+
 	ak := hummingbird.DeriveAuthKey(block, hf.ResID, hf.Bw, ingress, egress,
-		meta.BaseTS-uint32(hf.ResStartTime), hf.Duration, nil)
+		meta.BaseTS-uint32(hf.ResStartTime), hf.Duration, akBuffer)
 	flyoverMac := hummingbird.FullFlyoverMac(ak, dst, l, hf.ResStartTime,
-		meta.HighResTS, nil, nil)
+		meta.HighResTS, macBuffer, xkBuffer)
 
 	for i := range hf.HopField.Mac {
 		hf.HopField.Mac[i] ^= flyoverMac[i]
