@@ -159,7 +159,7 @@ func (s *Raw) GetCurrentHopField() (FlyoverHopField, error) {
 	return s.GetHopField(int(s.PathMeta.CurrHF))
 }
 
-func (s *Raw) ReplacMac(idx int, mac []byte) error {
+func (s *Raw) replacMac(idx int, mac []byte) error {
 	if idx >= s.NumLines-HopLines+1 {
 		return serrors.New("HopField index out of bounds", "max",
 			s.NumLines-HopLines, "actual", idx)
@@ -174,7 +174,7 @@ func (s *Raw) ReplacMac(idx int, mac []byte) error {
 
 // SetCurrentMac replaces the Mac of the current hopfield by a new mac
 func (s *Raw) ReplaceCurrentMac(mac []byte) error {
-	return s.ReplacMac(int(s.PathMeta.CurrHF), mac)
+	return s.replacMac(int(s.PathMeta.CurrHF), mac)
 }
 
 // Returns a slice of the MAC of the hopfield starting at index idx
