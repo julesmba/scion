@@ -65,7 +65,6 @@ func TestDeriveAuthKeyGoldenData(t *testing.T) {
 	var start uint32 = 0x0030001
 	var duration uint16 = 0x0203
 
-	// Compute expected result with library CBC
 	expected := [16]byte{0x7e, 0x61, 0x4, 0x91, 0x30, 0x6b, 0x95, 0xec, 0xb5, 0x75, 0xc6, 0xe9, 0x4c, 0x5a, 0x89, 0x84}
 
 	// Run DeriveAuthKey Function
@@ -145,7 +144,7 @@ func TestFlyoverMac(t *testing.T) {
 	buffer := make([]byte, 32)
 	xkbuffer := make([]uint32, 44)
 
-	// Compute expected output based on library cmac implementation
+	// Compute expected output based on library cbc-mac implementation
 	expected := make([]byte, 16)
 	binary.BigEndian.PutUint64(expected[0:8], uint64(dstIA))
 	binary.BigEndian.PutUint16(expected[8:10], pktlen)
@@ -173,7 +172,6 @@ func TestFlyoverMacGoldenData(t *testing.T) {
 	buffer := make([]byte, 32)
 	xkbuffer := make([]uint32, 44)
 
-	// Compute expected output based on library cmac implementation
 	expected := [16]byte{0xbe, 0xad, 0xcf, 0x70, 0xf, 0x75, 0xdf, 0x8, 0xde, 0x91, 0xe9, 0xda, 0xf5, 0xcb, 0x9f, 0x74}
 
 	mac := hummingbird.FullFlyoverMac(ak, dstIA, pktlen, resStartTs, highResTs, buffer, xkbuffer)
