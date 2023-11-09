@@ -71,8 +71,8 @@ func (s *Base) IncPath(n int) error {
 // IsXover returns whether we are at a crossover point.
 func (s *Base) IsXover() bool {
 	return s.PathMeta.CurrHF+FlyoverLines < uint8(s.NumLines) &&
-		s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+HopLines) ||
-		s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+FlyoverLines)
+		(s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+HopLines) ||
+			s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+FlyoverLines))
 
 }
 
