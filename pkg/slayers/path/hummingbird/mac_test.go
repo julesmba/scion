@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/dchest/cmac"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 	"github.com/stretchr/testify/require"
@@ -79,6 +78,7 @@ func BenchmarkDeriveAuthKey(b *testing.B) {
 
 // BenchmarkDeriveAuthKeyManually benchmarks obtaining Ak by just using the stdlib.
 // Results in my machine of 5.987 ns/op.
+// Does not take into account the process of moving data into the buffer
 func BenchmarkDeriveAuthKeyManually(b *testing.B) {
 	sv := []byte{0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7}
 	var resId uint32 = 0x40
@@ -108,9 +108,8 @@ func BenchmarkDeriveAuthKeyManually(b *testing.B) {
 	}
 }
 
-// verified with https://artjomb.github.io/cryptojs-extension/
-
-func TestFlyOverMac(t *testing.T) {
+// We use CBC-MAC using aes for the flyover mac. As we have only one block of input, this leads to the mac consisting of a single aes call.
+func TestFlyoverMac(t *testing.T) {
 	ak := []byte{142, 19, 145, 119, 76, 2, 228, 18, 134, 111, 116, 45, 200, 172, 113, 219}
 	var dstIA addr.IA = 326
 	var pktlen uint16 = 23
@@ -125,22 +124,12 @@ func TestFlyOverMac(t *testing.T) {
 	binary.BigEndian.PutUint16(expected[8:10], pktlen)
 	binary.BigEndian.PutUint16(expected[10:12], resStartTs)
 	binary.BigEndian.PutUint32(expected[12:16], highResTs)
-
 	block, err := aes.NewCipher(ak)
 	if err != nil {
 		require.Fail(t, err.Error())
 	}
-	c, err := cmac.New(block)
-	if err != nil {
-		require.Fail(t, err.Error())
-	}
-	if _, err := c.Write(expected[0:16]); err != nil {
-		require.Fail(t, err.Error())
-	}
+	block.Encrypt(expected[:], expected[:])
 
-	expected = c.Sum(expected[:0])
-
-	//expected with 0, 23, 1234, 4321: 726f7d9e 17e3cbe1 d47a32eb d8a5e26e
 	mac := hummingbird.FullFlyoverMac(ak, dstIA, pktlen, resStartTs, highResTs, buffer, xkbuffer)
 	require.Equal(t, expected, mac)
 	mac = hummingbird.FullFlyoverMac(ak, dstIA, pktlen, resStartTs, highResTs, buffer, xkbuffer)
@@ -159,54 +148,5 @@ func BenchmarkFlyoverMac(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		hummingbird.FullFlyoverMac(ak, dstIA, pktlen, resStartTs, highResTs, buffer, xkbuffer)
-	}
-}
-
-func TestCompareAk(t *testing.T) {
-	a := []byte{142, 19, 145, 119, 76, 2, 228, 18, 134, 111, 116, 45, 200, 172, 113, 219}
-	b := []byte{142, 19, 145, 151, 76, 2, 228, 18, 134, 111, 116, 45, 200, 172, 113, 219}
-	c := []byte{142, 19, 145, 119, 76, 2, 228, 18, 134, 111, 116, 45, 200, 172, 113, 218}
-	d := []byte{142, 19, 145, 119, 76, 2, 228, 18, 134, 111, 116, 45, 200, 172, 113, 219}
-
-	require.True(t, hummingbird.CompareAk(a, d))
-	require.False(t, hummingbird.CompareAk(a, b))
-	require.False(t, hummingbird.CompareAk(a, c))
-}
-
-func BenchmarkCompareAk(b *testing.B) {
-	a := []byte{142, 19, 145, 119, 76, 2, 228, 18, 134, 111, 116, 45, 200, 172, 113, 219}
-	c := []byte{142, 19, 145, 119, 76, 2, 228, 18, 134, 111, 116, 45, 200, 172, 113, 218}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		hummingbird.CompareAk(a, c)
-	}
-}
-
-func TestCompareVk(t *testing.T) {
-	a := []byte{1, 2, 3, 4, 5, 6}
-	b := []byte{1, 2, 3, 4, 5, 6}
-	c := []byte{2, 2, 3, 4, 5, 6}
-	d := []byte{1, 2, 3, 6, 5, 6}
-
-	require.True(t, hummingbird.CompareVk(a, b))
-	require.False(t, hummingbird.CompareVk(a, c))
-	require.False(t, hummingbird.CompareVk(a, d))
-}
-
-func BenchmarkCompareVk(b *testing.B) {
-	a := []byte{1, 2, 3, 4, 5, 6}
-	c := []byte{1, 2, 4, 4, 5, 6}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		hummingbird.CompareVk(a, c)
-	}
-}
-
-func BenchmarkSubtleCompare(b *testing.B) {
-	a := []byte{1, 2, 3, 4, 5, 6}
-	c := []byte{1, 2, 4, 4, 5, 6}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		hummingbird.SubtleCompare(a, c)
 	}
 }

@@ -5,11 +5,9 @@ package hummingbird
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/subtle"
 	"encoding/binary"
 
 	"github.com/scionproto/scion/pkg/addr"
-	"github.com/scionproto/scion/pkg/slayers/path"
 )
 
 // defined in asm_* assembly files
@@ -81,45 +79,8 @@ func FullFlyoverMac(ak []byte, dstIA addr.IA, pktlen uint16, resStartTime uint16
 	binary.BigEndian.PutUint32(buffer[12:16], highResTime)
 
 	expandKeyAsm(10, &ak[0], &xkbuffer[0])
-	//compute subkeys
-	encryptBlockAsm(10, &xkbuffer[0], &buffer[16], &ZeroBlock[0])
-
-	// Compute K1. Ignore K2 since we will always use K1
-	flag1 := buffer[16]&byte(128) == 0
-	shiftLeft(buffer[16:32])
-	if !flag1 {
-		buffer[31] ^= 0x87
-	}
-	//Compute cmac
-	xor(buffer[0:16], buffer[16:32])
 
 	encryptBlockAsm(10, &xkbuffer[0], &buffer[0], &buffer[0])
 
 	return buffer[0:16]
-}
-
-// Compares two 16 byte arrays.
-// Always returns false if at least one input has a length different from 16
-// Returns true if equal, false otherwise
-func CompareAk(a []byte, b []byte) bool {
-	if len(a) != 16 || len(b) != 16 {
-		return false
-	}
-	return binary.BigEndian.Uint64(a[0:8]) == binary.BigEndian.Uint64(b[0:8]) && binary.BigEndian.Uint64(a[8:16]) == binary.BigEndian.Uint64(b[8:16])
-}
-
-// around 800 ns
-
-// Compares two 6 byte arrays.
-// Always returns false if at least one input is of a different length.
-// Returns true if equal, false otherwise.
-func CompareVk(a, b []byte) bool {
-	if len(a) != 6 || len(b) != 6 {
-		return false
-	}
-	return binary.BigEndian.Uint32(a) == binary.BigEndian.Uint32(b) && a[4] == b[4] && a[5] == b[5]
-}
-
-func SubtleCompare(a, b []byte) bool {
-	return subtle.ConstantTimeCompare(a[:path.MacLen], b[:path.MacLen]) == 0
 }
