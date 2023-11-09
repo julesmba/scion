@@ -19,7 +19,7 @@ import (
 	"github.com/scionproto/scion/pkg/spao"
 )
 
-// SetSecretValue sets the secret value for the PRF function used to compute the Hummingbird Auth Key
+// SetSecretValue sets the key for the PRF function used to compute the Hummingbird Auth Key
 func (d *DataPlane) SetSecretValue(key []byte) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
@@ -84,7 +84,9 @@ func determinePeerHbird(pathMeta hummingbird.MetaHdr, inf path.InfoField) (bool,
 	// because we already know this is a well-formed peering path.
 	currHF := pathMeta.CurrHF
 	segLen := pathMeta.SegLen[0]
-	return currHF == segLen-hummingbird.HopLines || currHF == segLen-hummingbird.FlyoverLines || currHF == segLen, nil
+	peer := currHF == segLen-hummingbird.HopLines || currHF == segLen-hummingbird.FlyoverLines ||
+		currHF == segLen
+	return peer, nil
 }
 
 func (p *scionPacketProcessor) determinePeerHbird() (processResult, error) {
@@ -118,7 +120,8 @@ func (p *scionPacketProcessor) currentHbirdInfoPointer() uint16 {
 
 func (p *scionPacketProcessor) currentHbirdHopPointer() uint16 {
 	return uint16(slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
-		hummingbird.MetaLen + path.InfoLen*p.hbirdPath.NumINF + hummingbird.LineLen*int(p.hbirdPath.PathMeta.CurrHF))
+		hummingbird.MetaLen + path.InfoLen*p.hbirdPath.NumINF +
+		hummingbird.LineLen*int(p.hbirdPath.PathMeta.CurrHF))
 }
 
 func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
@@ -129,11 +132,13 @@ func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 	if p.flyoverField.Flyover {
 		ingress := p.hopField.ConsIngress
 		egress := p.hopField.ConsEgress
-		// Reservations are not bidirectional, reservation ingress and egress are always real ingress and egress
+		// Reservations are not bidirectional,
+		//   reservation ingress and egress are always real ingress and egress
 		if !p.infoField.ConsDir {
 			ingress, egress = egress, ingress
 		}
-		// On crossovers, A Reservation goes from the ingress of the incoming hop to the egress of the outgoing one
+		// On crossovers, A Reservation goes from the ingress of the incoming hop to
+		//   the egress of the outgoing one
 		var err error
 		if p.hbirdPath.IsXover() && !p.peering {
 			egress, err = p.hbirdPath.GetNextEgress()
@@ -147,11 +152,13 @@ func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 			}
 		}
 
-		ak := hummingbird.DeriveAuthKey(p.prf, p.flyoverField.ResID, p.flyoverField.Bw, ingress, egress,
-			p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime), p.flyoverField.Duration,
+		ak := hummingbird.DeriveAuthKey(p.prf, p.flyoverField.ResID, p.flyoverField.Bw,
+			ingress, egress, p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime),
+			p.flyoverField.Duration,
 			p.macInputBuffer[path.MACBufferSize+hummingbird.FlyoverMacBufferSize:])
-		flyoverMac = hummingbird.FullFlyoverMac(ak, p.scionLayer.DstIA, p.scionLayer.PayloadLen, p.flyoverField.ResStartTime,
-			p.hbirdPath.PathMeta.HighResTS, p.macInputBuffer[path.MACBufferSize:], p.hbirdXkbuffer)
+		flyoverMac = hummingbird.FullFlyoverMac(ak, p.scionLayer.DstIA, p.scionLayer.PayloadLen,
+			p.flyoverField.ResStartTime, p.hbirdPath.PathMeta.HighResTS,
+			p.macInputBuffer[path.MACBufferSize:], p.hbirdXkbuffer)
 	}
 	// Perform updateHbirdNonConsDirIngressSegID
 	// This needs de-aggregated MAC but needs to be done before scionMac is computed
@@ -172,19 +179,27 @@ func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 	scionMac := path.FullMAC(p.mac, p.infoField, p.hopField, p.macInputBuffer[:path.MACBufferSize])
 	// Aggregate MACS and verify if necessary
 	if p.flyoverField.Flyover {
-		binary.BigEndian.PutUint32(flyoverMac[0:4], binary.BigEndian.Uint32(scionMac[0:4])^binary.BigEndian.Uint32(flyoverMac[0:4]))
-		binary.BigEndian.PutUint16(flyoverMac[4:6], binary.BigEndian.Uint16(scionMac[4:6])^binary.BigEndian.Uint16(flyoverMac[4:6]))
+		binary.BigEndian.PutUint32(flyoverMac[0:4],
+			binary.BigEndian.Uint32(scionMac[0:4])^binary.BigEndian.Uint32(flyoverMac[0:4]))
+		binary.BigEndian.PutUint16(flyoverMac[4:6],
+			binary.BigEndian.Uint16(scionMac[4:6])^binary.BigEndian.Uint16(flyoverMac[4:6]))
 
-		verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen], flyoverMac[:path.MacLen])
+		verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen],
+			flyoverMac[:path.MacLen])
 		if verified == 0 {
-			log.Debug("SCMP: Aggregate MAC verification failed", "expected", fmt.Sprintf("%x", flyoverMac[:path.MacLen]),
-				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]), "cons_dir", p.infoField.ConsDir,
+			log.Debug("SCMP: Aggregate MAC verification failed",
+				"expected", fmt.Sprintf("%x", flyoverMac[:path.MacLen]),
+				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]),
+				"cons_dir", p.infoField.ConsDir,
 				"scionMac", fmt.Sprintf("%x", scionMac[:path.MacLen]),
 				"if_id", p.ingressID, "curr_inf", p.hbirdPath.PathMeta.CurrINF,
-				"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID, "packet length", p.scionLayer.PayloadLen,
-				"dest", p.scionLayer.DstIA, "startTime", p.flyoverField.ResStartTime, "highResTS", p.hbirdPath.PathMeta.HighResTS,
-				"ResID", p.flyoverField.ResID, "Bw", p.flyoverField.Bw, "in", p.hopField.ConsIngress,
-				"Eg", p.hopField.ConsEgress, "start ak", p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime),
+				"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID,
+				"packet length", p.scionLayer.PayloadLen,
+				"dest", p.scionLayer.DstIA, "startTime", p.flyoverField.ResStartTime,
+				"highResTS", p.hbirdPath.PathMeta.HighResTS,
+				"ResID", p.flyoverField.ResID, "Bw", p.flyoverField.Bw,
+				"in", p.hopField.ConsIngress, "Eg", p.hopField.ConsEgress,
+				"start ak", p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime),
 				"Duration", p.flyoverField.Duration)
 		}
 	} else {
@@ -248,7 +263,8 @@ func (p *scionPacketProcessor) ingressInterfaceHbird() uint16 {
 		if err != nil { // cannot be out of range
 			panic(err)
 		}
-		// Previous hop should always be a non-flyover field, as flyover is transferred to second hop on xover
+		// Previous hop should always be a non-flyover field,
+		//  as flyover is transferred to second hop on xover
 		hop, err = p.hbirdPath.GetHopField(int(p.hbirdPath.PathMeta.CurrHF) - hummingbird.HopLines)
 		if err != nil { // cannot be out of range
 			panic(err)
@@ -282,10 +298,11 @@ func (p *scionPacketProcessor) validateHbirdTransitUnderlaySrc() (processResult,
 // Verifies the PathMetaHeader timestamp is recent
 // Current implementation works with a nanosecond granularity HighResTS
 func (p *scionPacketProcessor) validatePathMetaTimestamp() {
-	timestamp := util.SecsToTime(p.hbirdPath.PathMeta.BaseTS).Add(time.Duration(p.hbirdPath.PathMeta.HighResTS>>22) * time.Millisecond)
+	timestamp := util.SecsToTime(p.hbirdPath.PathMeta.BaseTS).Add(
+		time.Duration(p.hbirdPath.PathMeta.HighResTS>>22) * time.Millisecond)
 	// TODO: make a configurable value instead of using a flat 1 seconds
 	if time.Until(timestamp).Abs() > time.Duration(1)*time.Second {
-		// Hummingbird specification explicitely says to forward best-effort is timestamp too old
+		// Hummingbird specification explicitly says to forward best-effort is timestamp too old
 		p.hasPriority = false
 	}
 }
@@ -299,7 +316,8 @@ func (p *scionPacketProcessor) handleHbirdIngressRouterAlert() (processResult, e
 		return processResult{}, nil
 	}
 	*alert = false
-	if err := p.hbirdPath.SetHopField(p.flyoverField, int(p.hbirdPath.PathMeta.CurrHF)); err != nil {
+	err := p.hbirdPath.SetHopField(p.flyoverField, int(p.hbirdPath.PathMeta.CurrHF))
+	if err != nil {
 		return processResult{}, serrors.WrapStr("update hop field", err)
 	}
 	slowPathRequest := slowPathRequest{
@@ -319,7 +337,8 @@ func (p *scionPacketProcessor) handleHbirdEgressRouterAlert() (processResult, er
 		return processResult{}, nil
 	}
 	*alert = false
-	if err := p.hbirdPath.SetHopField(p.flyoverField, int(p.hbirdPath.PathMeta.CurrHF)); err != nil {
+	err := p.hbirdPath.SetHopField(p.flyoverField, int(p.hbirdPath.PathMeta.CurrHF))
+	if err != nil {
 		return processResult{}, serrors.WrapStr("update hop field", err)
 	}
 	slowPathRequest := slowPathRequest{
@@ -332,7 +351,8 @@ func (p *scionPacketProcessor) handleHbirdEgressRouterAlert() (processResult, er
 func (p *scionPacketProcessor) updateHbirdNonConsDirIngressSegIDFlyover(flyoverMac []byte) error {
 	// against construction dir the ingress router updates the SegID, ifID == 0
 	// means this comes from this AS itself, so nothing has to be done.
-	// If a flyover is presebt, need to first de-aggregate the first two bytes of the mac before updating segID
+	// If a flyover is present, need to first de-aggregate the first two bytes of the mac
+	// before updating SegID
 	if !p.infoField.ConsDir && p.ingressID != 0 && !p.peering {
 		// de-aggregate first two bytes of mac
 		p.hopField.Mac[0] ^= flyoverMac[0]
@@ -341,7 +361,8 @@ func (p *scionPacketProcessor) updateHbirdNonConsDirIngressSegIDFlyover(flyoverM
 		// restore correct state of MAC field, even if error
 		p.hopField.Mac[0] ^= flyoverMac[0]
 		p.hopField.Mac[1] ^= flyoverMac[1]
-		if err := p.hbirdPath.SetInfoField(p.infoField, int(p.hbirdPath.PathMeta.CurrINF)); err != nil {
+		err := p.hbirdPath.SetInfoField(p.infoField, int(p.hbirdPath.PathMeta.CurrINF))
+		if err != nil {
 			return serrors.WrapStr("update info field", err)
 		}
 	}
@@ -353,7 +374,8 @@ func (p *scionPacketProcessor) updateHbirdNonConsDirIngressSegID() error {
 	// means this comes from this AS itself, so nothing has to be done.
 	if !p.infoField.ConsDir && p.ingressID != 0 && !p.peering {
 		p.infoField.UpdateSegID(p.hopField.Mac)
-		if err := p.hbirdPath.SetInfoField(p.infoField, int(p.hbirdPath.PathMeta.CurrINF)); err != nil {
+		err := p.hbirdPath.SetInfoField(p.infoField, int(p.hbirdPath.PathMeta.CurrINF))
+		if err != nil {
 			return serrors.WrapStr("update info field", err)
 		}
 	}
@@ -380,18 +402,23 @@ func (p *scionPacketProcessor) doFlyoverXover() error {
 	}
 
 	// Buffer flyover part of current mac by xoring it with cached scionMac
-	binary.BigEndian.PutUint32(p.macInputBuffer[6:10], binary.BigEndian.Uint32(p.flyoverField.HopField.Mac[0:4])^binary.BigEndian.Uint32(p.cachedMac[0:4]))
+	binary.BigEndian.PutUint32(p.macInputBuffer[6:10],
+		binary.BigEndian.Uint32(p.flyoverField.HopField.Mac[0:4])^
+			binary.BigEndian.Uint32(p.cachedMac[0:4]))
 	p.macInputBuffer[10] = p.flyoverField.HopField.Mac[4] ^ p.cachedMac[4]
 	p.macInputBuffer[11] = p.flyoverField.HopField.Mac[5] ^ p.cachedMac[5]
 	// deaggregate current mac
 	copy(p.hopField.Mac[:], p.cachedMac[0:6])
-	p.hbirdPath.ReplaceCurrentMac(p.cachedMac)
+	if err := p.hbirdPath.ReplaceCurrentMac(p.cachedMac); err != nil {
+		return err
+	}
 	// Aggregate Mac of second hop
 	mac, err := p.hbirdPath.GetMac(int(p.hbirdPath.PathMeta.CurrHF) + hummingbird.HopLines)
 	if err != nil {
 		return err
 	}
-	binary.BigEndian.PutUint32(mac[0:4], binary.BigEndian.Uint32(mac[0:4])^binary.BigEndian.Uint32(p.macInputBuffer[6:10]))
+	binary.BigEndian.PutUint32(mac[0:4],
+		binary.BigEndian.Uint32(mac[0:4])^binary.BigEndian.Uint32(p.macInputBuffer[6:10]))
 	mac[4] ^= p.macInputBuffer[10]
 	mac[5] ^= p.macInputBuffer[11]
 	return nil
@@ -438,7 +465,8 @@ func (p *scionPacketProcessor) processHbirdEgress() error {
 	// need to update the SegID.
 	if p.infoField.ConsDir && !p.peering {
 		p.infoField.UpdateSegID(p.hopField.Mac)
-		if err := p.hbirdPath.SetInfoField(p.infoField, int(p.hbirdPath.PathMeta.CurrINF)); err != nil {
+		err := p.hbirdPath.SetInfoField(p.infoField, int(p.hbirdPath.PathMeta.CurrINF))
+		if err != nil {
 			// TODO parameter problem invalid path
 			return serrors.WrapStr("update info field", err)
 		}
@@ -525,7 +553,8 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 		}
 		// verify the new block
 		if p.flyoverField.Flyover {
-			// TODO: can possibly skip this once we modify flyover at Xover implementation. Will need to aggregate new MAC though
+			// TODO: can possibly skip this once we modify flyover at Xover implementation.
+			// Will need to aggregate new MAC though
 			if r, err := p.verifyCurrentHbirdMAC(); err != nil {
 				return r, err
 			}
@@ -614,7 +643,8 @@ func (p *slowPathPacketProcessor) prepareHbirdSCMP(
 	}
 	revPath := revPathTmp.(*hummingbird.Decoded)
 
-	peering, err := determinePeerHbird(revPath.PathMeta, revPath.InfoFields[revPath.PathMeta.CurrINF])
+	peering, err := determinePeerHbird(revPath.PathMeta,
+		revPath.InfoFields[revPath.PathMeta.CurrINF])
 	if err != nil {
 		return nil, serrors.Wrap(cannotRoute, err, "details", "peering cannot be determined")
 	}

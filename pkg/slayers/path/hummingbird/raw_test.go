@@ -65,8 +65,10 @@ func TestRawReverseHbird(t *testing.T) {
 			i := i
 			t.Run(fmt.Sprintf("%s case %d", name, i+1), func(t *testing.T) {
 				//t.Parallel()
-				input := mkRawHbirdPath(t, tc.input, uint8(tc.inIdxs[i][0]), uint8(tc.inIdxs[i][1]))
-				want := mkRawHbirdPath(t, tc.want, uint8(tc.wantIdxs[i][0]), uint8(tc.wantIdxs[i][1]))
+				input := mkRawHbirdPath(t, tc.input, uint8(tc.inIdxs[i][0]),
+					uint8(tc.inIdxs[i][1]))
+				want := mkRawHbirdPath(t, tc.want, uint8(tc.wantIdxs[i][0]),
+					uint8(tc.wantIdxs[i][1]))
 				revPath, err := input.Reverse()
 				assert.NoError(t, err)
 				assert.Equal(t, want, revPath)

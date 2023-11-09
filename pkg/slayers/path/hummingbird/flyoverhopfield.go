@@ -31,7 +31,8 @@ type FlyoverHopField struct {
 	ResID uint32
 	// Bw is the reserved banwidth of the flyover
 	Bw uint16
-	// ResStartTime is the start time of the reservation, as a negative offset from the BaseTimeStamp in the PathMetaHdr
+	// ResStartTime is the start time of the reservation
+	// As a negative offset from the BaseTimeStamp in the PathMetaHdr
 	ResStartTime uint16
 	// Duration is the duration of the reservation
 	Duration uint16
@@ -54,9 +55,11 @@ func (h *FlyoverHopField) DecodeFromBytes(raw []byte) (err error) {
 	h.Flyover = raw[0]&0x80 == 0x80
 	if h.Flyover {
 		if len(raw) < FlyoverLen {
-			return serrors.New("FlyoverHopField raw too short", "expected", FlyoverLen, "actual", len(raw))
+			return serrors.New("FlyoverHopField raw too short", "expected",
+				FlyoverLen, "actual", len(raw))
 		}
-		//@ assert &raw[12:16][0] == &raw[12] && &raw[12:16][1] == &raw[12] && &raw[12:16][2] == &raw[14] && &raw[12:16][3] == &raw[15]
+		//@ assert &raw[12:16][0] == &raw[12] && &raw[12:16][1] == &raw[12]
+		// 		&& &raw[12:16][2] == &raw[14] && &raw[12:16][3] == &raw[15]
 		h.ResID = binary.BigEndian.Uint32(raw[12:16]) >> 10
 		h.Bw = binary.BigEndian.Uint16(raw[14:16]) & 0x03ff
 		//@ assert &raw[16:18][0] == &raw[16] && &raw[16:18][1] == &raw[17]
@@ -84,10 +87,12 @@ func (h *FlyoverHopField) SerializeTo(b []byte) (err error) {
 
 	if h.Flyover {
 		if len(b) < FlyoverLen {
-			return serrors.New("buffer for FlyoverHopField too short", "expected", FlyoverLen, "actual", len(b))
+			return serrors.New("buffer for FlyoverHopField too short", "expected",
+				FlyoverLen, "actual", len(b))
 		}
 		b[0] |= 0x80
-		//@ assert &b[12:16][0] == &b[12] && &b[12:16][1] == &b[12] && &b[12:16][2] == &b[14] && &b[12:16][3] == &b[15]
+		//@ assert &b[12:16][0] == &b[12] && &b[12:16][1] == &b[12] && &b[12:16][2] == &b[14]
+		//		 && &b[12:16][3] == &b[15]
 		binary.BigEndian.PutUint32(b[12:16], h.ResID<<10+uint32(h.Bw))
 		//@ assert &b[16:18][0] == &b[16] && &b[16:18][1] == &b[17]
 		binary.BigEndian.PutUint16(b[16:18], h.ResStartTime)

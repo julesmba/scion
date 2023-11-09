@@ -45,8 +45,6 @@ type Base struct {
 	// NumINF is the number of InfoFields in the path.
 	NumINF int
 	// NumHops is the number HopFields in the path.
-	// If IsHummingbird is true, NumHops is the number of 4 bytes lines in the path instead of the number of hops.
-	// TODO: rename and reevaluate?
 	NumHops int
 }
 

@@ -71,7 +71,8 @@ func (s *Base) IncPath(n int) error {
 // IsXover returns whether we are at a crossover point.
 func (s *Base) IsXover() bool {
 	return s.PathMeta.CurrHF+FlyoverLines < uint8(s.NumLines) &&
-		(s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+HopLines) || s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+FlyoverLines))
+		s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+HopLines) ||
+		s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+FlyoverLines)
 
 }
 
@@ -150,6 +151,7 @@ func (m *MetaHdr) SerializeTo(b []byte) error {
 }
 
 func (m MetaHdr) String() string {
-	return fmt.Sprintf("{CurrInf: %d, CurrHF: %d, SegLen: %v, BaseTimestamp: %v, HighResTimestamp: %v}",
+	return fmt.Sprintf(
+		"{CurrInf: %d, CurrHF: %d, SegLen: %v, BaseTimestamp: %v, HighResTimestamp: %v}",
 		m.CurrINF, m.CurrHF, m.SegLen, m.BaseTS, m.HighResTS)
 }

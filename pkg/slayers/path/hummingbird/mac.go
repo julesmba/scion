@@ -15,7 +15,8 @@ import (
 //go:noescape
 func encryptBlockAsm(nr int, xk *uint32, dst, src *byte)
 
-//TODO: test expandKeyAsm on arm64 and ppc64 machines. Compare with code in go/src/crypto/aes/asm_* if necessary
+// TODO: test expandKeyAsm on arm64 and ppc64 machines.
+// Compare with code in go/src/crypto/aes/asm_* if necessary
 
 //go:noescape
 func expandKeyAsm(nr int, key *byte, enc *uint32)
@@ -28,8 +29,10 @@ const PathType = 5
 var ZeroBlock [aes.BlockSize]byte
 
 // Derive authentication key A_k
-// block is expected to be initialized beforehand with aes.NewCipher(sv), where sv is this AS' secret value
-func DeriveAuthKey(block cipher.Block, resId uint32, bw, in, eg uint16, startTime uint32, resDuration uint16, buffer []byte) []byte {
+// block is expected to be initialized beforehand with aes.NewCipher(sv),
+// where sv is this AS' secret value
+func DeriveAuthKey(block cipher.Block, resId uint32, bw, in, eg uint16,
+	startTime uint32, resDuration uint16, buffer []byte) []byte {
 
 	if len(buffer) < AkBufferSize {
 		buffer = make([]byte, AkBufferSize)
@@ -49,7 +52,8 @@ func DeriveAuthKey(block cipher.Block, resId uint32, bw, in, eg uint16, startTim
 
 // Computes full flyover mac vk
 // Needs a xkbuffer of 44 uint32s to store the expanded keys for aes
-func FullFlyoverMac(ak []byte, dstIA addr.IA, pktlen uint16, resStartTime uint16, highResTime uint32, buffer []byte, xkbuffer []uint32) []byte {
+func FullFlyoverMac(ak []byte, dstIA addr.IA, pktlen uint16, resStartTime uint16,
+	highResTime uint32, buffer []byte, xkbuffer []uint32) []byte {
 	if len(buffer) < FlyoverMacBufferSize {
 		buffer = make([]byte, FlyoverMacBufferSize)
 	}

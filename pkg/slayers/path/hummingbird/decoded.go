@@ -154,7 +154,8 @@ func (s *Decoded) Reverse() (path.Path, error) {
 	return s, nil
 }
 
-// RemoveFlyovers removes all reservations from a decoded path and corrects SegLen and CurrHF accordingly
+// RemoveFlyovers removes all reservations from a decoded path
+// Corrects SegLen and CurrHF accordingly
 func (s *Decoded) RemoveFlyovers() error {
 	var idxInf uint8 = 0
 	var offset uint8 = 0
@@ -178,7 +179,8 @@ func (s *Decoded) RemoveFlyovers() error {
 			segCount = 0
 			idxInf += 1
 		} else if s.PathMeta.SegLen[idxInf] < segCount {
-			return serrors.New("new hopfields boundaries do not match new segment lengths after flyover removal")
+			return serrors.New(
+				"New hopfields boundaries do not match new segment lengths after flyover removal")
 		}
 		offset += HopLines
 	}

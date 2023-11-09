@@ -92,12 +92,12 @@ var emptyDecodedTestPath = &hummingbird.Decoded{
 	HopFields:  []hummingbird.FlyoverHopField{},
 }
 
-var rawHbirdPath = []byte("\x00\x02\x04\x00\x00\x00\x03\x28\x00\x00\x04\xd2" + //Pathmeta header
-	"\x00\x00\x01\x11\x00\x00\x01\x00\x01\x00\x02\x22\x00\x00\x01\x00" + //Infofields
-	"\x80\x3f\x00\x01\x00\x00\x01\x02\x03\x04\x05\x06\x00\x00\x00\x04\x00\x02\x00\x01" + //flyoverfield 0
-	"\x00\x3f\x00\x03\x00\x02\x01\x02\x03\x04\x05\x06" + //hopfield 1
-	"\x00\x3f\x00\x00\x00\x02\x01\x02\x03\x04\x05\x06" + //hopfield 2
-	"\x80\x3f\x00\x01\x00\x00\x01\x02\x03\x04\x05\x06\x00\x00\x00\x04\x00\x00\x00\x01") //flyoverfield 3
+var rawHbirdPath = []byte("\x00\x02\x04\x00\x00\x00\x03\x28\x00\x00\x04\xd2" +
+	"\x00\x00\x01\x11\x00\x00\x01\x00\x01\x00\x02\x22\x00\x00\x01\x00" +
+	"\x80\x3f\x00\x01\x00\x00\x01\x02\x03\x04\x05\x06\x00\x00\x00\x04\x00\x02\x00\x01" +
+	"\x00\x3f\x00\x03\x00\x02\x01\x02\x03\x04\x05\x06" +
+	"\x00\x3f\x00\x00\x00\x02\x01\x02\x03\x04\x05\x06" +
+	"\x80\x3f\x00\x01\x00\x00\x01\x02\x03\x04\x05\x06\x00\x00\x00\x04\x00\x00\x00\x01")
 
 type hbirdPathCase struct {
 	infos []bool
@@ -117,14 +117,18 @@ var pathReverseCasesHbird = map[string]struct {
 		wantIdxs: [][2]int{{0, 3}, {0, 0}},
 	},
 	"1 segment, 5 hops": {
-		input:    hbirdPathCase{[]bool{true}, [][][]uint16{{{11, 1}, {12, 1}, {13, 0}, {14, 1}, {15, 0}}}},
-		want:     hbirdPathCase{[]bool{false}, [][][]uint16{{{15, 0}, {14, 0}, {13, 0}, {12, 0}, {11, 0}}}},
+		input: hbirdPathCase{[]bool{true},
+			[][][]uint16{{{11, 1}, {12, 1}, {13, 0}, {14, 1}, {15, 0}}}},
+		want: hbirdPathCase{[]bool{false},
+			[][][]uint16{{{15, 0}, {14, 0}, {13, 0}, {12, 0}, {11, 0}}}},
 		inIdxs:   [][2]int{{0, 0}, {0, 5}, {0, 10}, {0, 13}, {0, 18}},
 		wantIdxs: [][2]int{{0, 12}, {0, 9}, {0, 6}, {0, 3}, {0, 0}},
 	},
 	"2 segments, 5 hops": {
-		input:    hbirdPathCase{[]bool{true, false}, [][][]uint16{{{11, 0}, {12, 0}}, {{13, 1}, {14, 1}, {15, 0}}}},
-		want:     hbirdPathCase{[]bool{true, false}, [][][]uint16{{{15, 0}, {14, 0}, {13, 0}}, {{12, 0}, {11, 0}}}},
+		input: hbirdPathCase{[]bool{true, false},
+			[][][]uint16{{{11, 0}, {12, 0}}, {{13, 1}, {14, 1}, {15, 0}}}},
+		want: hbirdPathCase{[]bool{true, false},
+			[][][]uint16{{{15, 0}, {14, 0}, {13, 0}}, {{12, 0}, {11, 0}}}},
 		inIdxs:   [][2]int{{0, 0}, {0, 3}, {1, 6}, {1, 11}, {1, 16}},
 		wantIdxs: [][2]int{{1, 12}, {1, 9}, {0, 6}, {0, 3}, {0, 0}},
 	},
@@ -204,7 +208,8 @@ func TestDecodedToRawHbird(t *testing.T) {
 	assert.Equal(t, rawHbirdTestPath, raw)
 }
 
-func mkDecodedHbirdPath(t *testing.T, pcase hbirdPathCase, infIdx, hopIdx uint8) *hummingbird.Decoded {
+func mkDecodedHbirdPath(t *testing.T, pcase hbirdPathCase,
+	infIdx, hopIdx uint8) *hummingbird.Decoded {
 	t.Helper()
 	s := &hummingbird.Decoded{}
 	meta := hummingbird.MetaHdr{
@@ -221,7 +226,8 @@ func mkDecodedHbirdPath(t *testing.T, pcase hbirdPathCase, infIdx, hopIdx uint8)
 		for _, hop := range hops {
 			f := hop[1] == 1
 			s.HopFields = append(s.HopFields, hummingbird.FlyoverHopField{
-				HopField: path.HopField{ConsIngress: hop[0], ConsEgress: hop[0], Mac: [6]byte{1, 2, 3, 4, 5, 6}},
+				HopField: path.HopField{ConsIngress: hop[0], ConsEgress: hop[0],
+					Mac: [6]byte{1, 2, 3, 4, 5, 6}},
 				Flyover:  f,
 				Duration: 2})
 			if f {

@@ -27,11 +27,12 @@ type Reservation struct {
 	Ak [16]byte
 	// Bw is the reserved Bandwidth
 	Bw uint16
-	// StartTime is the unix timestamp for teh start of the reservation
+	// StartTime is the unix timestamp for the start of the reservation
 	StartTime uint32
 	// Duration is the duration of the reservation in seconds
 	Duration uint16
-	// EndTime is the unix timestamp at which the reservation ends. Is not strictly necessary but included for simplicity
+	// EndTime is the unix timestamp at which the reservation ends.
+	// Is not strictly necessary but included for simplicity
 	EndTime uint32
 	// Ingress is the ingress interface for the reserved hop
 	Ingress uint16
@@ -40,7 +41,7 @@ type Reservation struct {
 }
 
 // Temporary cheating function until the system to request keys is available
-// return true if successfull
+// return true if successful
 func cheat_auth_key(res *Reservation) (Reservation, error) {
 	// ResID is set by seller, pick random
 	res.ResID = uint32(rand.Int31() >> 10)
@@ -56,12 +57,14 @@ func cheat_auth_key(res *Reservation) (Reservation, error) {
 	key0 := control.DeriveHbirdSecretValue(mkeys.Key0)
 	prf, _ := aes.NewCipher(key0)
 	buffer := make([]byte, 16)
-	ak := hummingbird.DeriveAuthKey(prf, res.ResID, res.Bw, res.Ingress, res.Egress, res.StartTime, res.Duration, buffer)
+	ak := hummingbird.DeriveAuthKey(prf, res.ResID, res.Bw, res.Ingress, res.Egress,
+		res.StartTime, res.Duration, buffer)
 	copy(res.Ak[:], ak[0:16])
 	return *res, nil
 }
 
-// Requests a reservation for each given reservation. Expects AS, Bw, StartTime, EndTime, Ingress and Egress to be filled in
+// Requests a reservation for each given reservation.
+// Expects AS, Bw, StartTime, EndTime, Ingress and Egress to be filled in
 func RequestReservations(rs []Reservation) {
 
 }
@@ -81,7 +84,10 @@ func ConvertToHbirdPath(p snet.Path) (snet.Path, error) {
 	if !ok {
 		return nil, serrors.New("Can only convert SCiON paths to Hummingbird")
 	}
-	dec := convertSCIONToHbirdDecoded(dpath.Raw)
+	dec, err := convertSCIONToHbirdDecoded(dpath.Raw)
+	if err != nil {
+		return nil, err
+	}
 
 	hbird, err := snetpath.NewHbirdFromDecoded(&dec)
 	if err != nil {
@@ -98,14 +104,16 @@ func ConvertToHbirdPath(p snet.Path) (snet.Path, error) {
 	return p, nil
 }
 
-func convertSCIONToHbirdDecoded(p []byte) hummingbird.Decoded {
+func convertSCIONToHbirdDecoded(p []byte) (hummingbird.Decoded, error) {
 
 	scionDec := scion.Decoded{}
-	scionDec.DecodeFromBytes(p)
+	if err := scionDec.DecodeFromBytes(p); err != nil {
+		return hummingbird.Decoded{}, err
+	}
 
 	hbirdDec := hummingbird.Decoded{}
 	hbirdDec.ConvertFromScionDecoded(scionDec)
-	return hbirdDec
+	return hbirdDec, nil
 }
 
 type HummingbirdClient struct {
@@ -134,10 +142,12 @@ func (c *HummingbirdClient) parseIAs(ifs []snet.PathInterface) error {
 
 		switch true {
 		// First hop after Crossover always has same as as previous hop
-		case (i == int(c.dec.FirstHopPerSeg[0]) && !c.dec.InfoFields[1].Peer) || (i == int(c.dec.FirstHopPerSeg[1])):
+		case (i == int(c.dec.FirstHopPerSeg[0]) && !c.dec.InfoFields[1].Peer) ||
+			(i == int(c.dec.FirstHopPerSeg[1])):
 			c.ases[i] = c.ases[i-1]
 			i++
-		// Skip duplicates interfaces. Only duplicates we want are those for Xovers, and we already add these manually above
+		// Skip duplicates interfaces.
+		// Only duplicates we want are those for Xovers, and we already add these manually above
 		case ifs[j].IA == ifs[j-1].IA:
 			j++
 		default:
@@ -162,10 +172,14 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) error {
 	case snetpath.SCION:
 		// Convert path to decoded hbird path
 		scionDec := scion.Decoded{}
-		scionDec.DecodeFromBytes(v.Raw)
+		if err := scionDec.DecodeFromBytes(v.Raw); err != nil {
+			return serrors.Join(err, serrors.New("Failed to Prepare Hummingbird Path"))
+		}
 		c.dec.ConvertFromScionDecoded(scionDec)
 	case snetpath.Hummingbird:
-		c.dec.DecodeFromBytes(v.Raw)
+		if err := c.dec.DecodeFromBytes(v.Raw); err != nil {
+			return serrors.Join(err, serrors.New("Failed to Prepare Hummingbird Path"))
+		}
 	default:
 		return serrors.New("Unsupported path type")
 	}
@@ -186,7 +200,8 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) error {
 	return nil
 }
 
-func (c *HummingbirdClient) RequestReservationsAllHops(bw uint16, start uint32, duration uint16) error {
+func (c *HummingbirdClient) RequestReservationsAllHops(
+	bw uint16, start uint32, duration uint16) error {
 	return c.RequestReservationForASes(c.ases, bw, start, duration)
 }
 
@@ -199,7 +214,8 @@ func (c *HummingbirdClient) GetPathASes() []addr.IA {
 
 // Requests new reservations for this path for the listed ASes
 // Expects them to be in order without duplicates
-func (c *HummingbirdClient) RequestReservationForASes(asin []addr.IA, bw uint16, start uint32, duration uint16) error {
+func (c *HummingbirdClient) RequestReservationForASes(
+	asin []addr.IA, bw uint16, start uint32, duration uint16) error {
 	j := 0
 	for i := range c.dec.HopFields {
 		if j >= len(asin) || asin[j] != c.ases[i] {
@@ -211,13 +227,15 @@ func (c *HummingbirdClient) RequestReservationForASes(asin []addr.IA, bw uint16,
 		if i < int(c.dec.FirstHopPerSeg[0]) {
 			infIdx = 0
 			if !c.dec.InfoFields[0].Peer {
-				lastHopBeforeXover = (i == int(c.dec.FirstHopPerSeg[0])-1) && i < len(c.dec.HopFields)-1
+				lastHopBeforeXover = (i == int(c.dec.FirstHopPerSeg[0])-1) &&
+					i < len(c.dec.HopFields)-1
 			}
 		} else if i < int(c.dec.FirstHopPerSeg[1]) {
 			infIdx = 1
 			if !c.dec.InfoFields[1].Peer {
 				firstHopAfterXover = i == int(c.dec.FirstHopPerSeg[0])
-				lastHopBeforeXover = i == int(c.dec.FirstHopPerSeg[1])-1 && i < len(c.dec.HopFields)-1
+				lastHopBeforeXover = i == int(c.dec.FirstHopPerSeg[1])-1 &&
+					i < len(c.dec.HopFields)-1
 			}
 		} else {
 			infIdx = 2
@@ -321,9 +339,12 @@ func (c *HummingbirdClient) FinalizePath(p snet.Path, pktLen uint16) (snet.Path,
 		}
 		res := c.reservations[i]
 		c.dec.HopFields[i].ResStartTime = uint16(secs - res.StartTime)
-		flyovermac := hummingbird.FullFlyoverMac(res.Ak[:], c.dest, pktLen, c.dec.HopFields[i].ResStartTime, millis, c.byteBuffer[:], c.xkbuffer[:])
-		binary.BigEndian.PutUint32(c.dec.HopFields[i].HopField.Mac[:4], binary.BigEndian.Uint32(flyovermac[:4])^binary.BigEndian.Uint32(c.macs[i][:4]))
-		binary.BigEndian.PutUint16(c.dec.HopFields[i].HopField.Mac[4:], binary.BigEndian.Uint16(flyovermac[4:])^binary.BigEndian.Uint16(c.macs[i][4:]))
+		flyovermac := hummingbird.FullFlyoverMac(res.Ak[:], c.dest, pktLen,
+			c.dec.HopFields[i].ResStartTime, millis, c.byteBuffer[:], c.xkbuffer[:])
+		binary.BigEndian.PutUint32(c.dec.HopFields[i].HopField.Mac[:4],
+			binary.BigEndian.Uint32(flyovermac[:4])^binary.BigEndian.Uint32(c.macs[i][:4]))
+		binary.BigEndian.PutUint16(c.dec.HopFields[i].HopField.Mac[4:],
+			binary.BigEndian.Uint16(flyovermac[4:])^binary.BigEndian.Uint16(c.macs[i][4:]))
 	}
 	dphb.Raw = make([]byte, c.dec.Len())
 	if err := c.dec.SerializeTo(dphb.Raw); err != nil {

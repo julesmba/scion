@@ -148,7 +148,7 @@ var (
 	macVerificationFailed         = errors.New("MAC verification failed")
 	badPacketSize                 = errors.New("bad packet size")
 	slowPathRequired              = errors.New("slow-path required")
-	reservationExpired            = errors.New("current time is outside of reservation validity window")
+	reservationExpired            = errors.New("current time is outside of reservation validity")
 
 	// zeroBuffer will be used to reset the Authenticator option in the
 	// scionPacketProcessor.OptAuth
@@ -993,12 +993,14 @@ type processResult struct {
 
 func newPacketProcessor(d *DataPlane) *scionPacketProcessor {
 	p := &scionPacketProcessor{
-		d:              d,
-		buffer:         gopacket.NewSerializeBuffer(),
-		prf:            d.prfFactory(),
-		mac:            d.macFactory(),
-		macInputBuffer: make([]byte, max(path.MACBufferSize+hummingbird.FlyoverMacBufferSize+hummingbird.AkBufferSize, libepic.MACBufferSize)),
-		hbirdXkbuffer:  make([]uint32, hummingbird.XkBufferSize),
+		d:      d,
+		buffer: gopacket.NewSerializeBuffer(),
+		prf:    d.prfFactory(),
+		mac:    d.macFactory(),
+		macInputBuffer: make([]byte,
+			max(path.MACBufferSize+hummingbird.FlyoverMacBufferSize+hummingbird.AkBufferSize,
+				libepic.MACBufferSize)),
+		hbirdXkbuffer: make([]uint32, hummingbird.XkBufferSize),
 	}
 	p.scionLayer.RecyclePaths()
 	return p

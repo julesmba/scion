@@ -130,7 +130,6 @@ func (s *Raw) SetInfoField(info path.InfoField, idx int) error {
 }
 
 // GetHopField returns the HopField at a given index.
-// For Hummingbird paths the index is the offset in 4 byte lines
 func (s *Raw) GetHopField(idx int) (path.HopField, error) {
 	if idx >= s.NumHops {
 		return path.HopField{},
@@ -151,10 +150,6 @@ func (s *Raw) GetCurrentHopField() (path.HopField, error) {
 }
 
 // SetHopField updates the HopField at a given index.
-// For Hummingbird paths the index is the offset in 4 byte lines
-//
-// If replacing a FlyoverHopField with a Hopfield, it is replaced by a FlyoverHopField with dummy values.
-// This works for SCMP packets as Flyover hops are removed later in the process of building a SCMP packet.
 func (s *Raw) SetHopField(hop path.HopField, idx int) error {
 	if idx >= s.NumHops {
 		return serrors.New("HopField index out of bounds", "max", s.NumHops-1, "actual", idx)
