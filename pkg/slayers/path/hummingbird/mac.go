@@ -49,7 +49,6 @@ func DeriveAuthKey(block cipher.Block, resId uint32, bw, in, eg uint16, startTim
 
 // Computes full flyover mac vk
 // Needs a xkbuffer of 44 uint32s to store the expanded keys for aes
-// dummy buffer is memory used by key expansion to store decryption keys
 func FullFlyoverMac(ak []byte, dstIA addr.IA, pktlen uint16, resStartTime uint16, highResTime uint32, buffer []byte, xkbuffer []uint32) []byte {
 	if len(buffer) < FlyoverMacBufferSize {
 		buffer = make([]byte, FlyoverMacBufferSize)

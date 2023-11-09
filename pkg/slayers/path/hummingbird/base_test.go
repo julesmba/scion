@@ -60,8 +60,8 @@ func TestIncPath(t *testing.T) {
 						CurrHF:  uint8(tc.inIdxs[i][1]),
 						SegLen:  tc.segLens,
 					},
-					NumINF:  tc.nsegs,
-					NumHops: tc.nhops,
+					NumINF:   tc.nsegs,
+					NumLines: tc.nhops,
 				}
 				err := s.IncPath(3)
 				if tc.wantIdxs[i][0] == 0 && tc.wantIdxs[i][1] == 0 {
@@ -126,8 +126,8 @@ func TestBaseIsXOver(t *testing.T) {
 					CurrHF:  uint8(tc.inIdxs[i][1]),
 					SegLen:  tc.segLens,
 				},
-				NumINF:  tc.nsegs,
-				NumHops: tc.nhops,
+				NumINF:   tc.nsegs,
+				NumLines: tc.nhops,
 			}
 			t.Run(fmt.Sprintf("%s case %d", name, i+1), func(t *testing.T) {
 				t.Parallel()

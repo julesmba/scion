@@ -27,12 +27,12 @@ type Base struct {
 	PathMeta MetaHdr
 	// NumINF is the number of InfoFields in the path.
 	NumINF int
-	// NumHops is the number HopFields in the path.
-	// If IsHummingbird is true, NumHops is the number of 4 bytes lines in the path instead of the number of hops.
-	// TODO: rename and reevaluate?
-	NumHops int
+	// NumLines is the number of 4 bytes lines in the path.
+	NumLines int
 }
 
+// DecodeFromBytes populates the fields from a raw buffer. The buffer must be of length >=
+// hummingbird.MetaLen.
 func (s *Base) DecodeFromBytes(data []byte) error {
 	// PathMeta takes care of bounds check.
 	err := s.PathMeta.DecodeFromBytes(data)
@@ -40,7 +40,7 @@ func (s *Base) DecodeFromBytes(data []byte) error {
 		return err
 	}
 	s.NumINF = 0
-	s.NumHops = 0
+	s.NumLines = 0
 	for i := 2; i >= 0; i-- {
 		if s.PathMeta.SegLen[i] == 0 && s.NumINF > 0 {
 			return serrors.New(
@@ -49,17 +49,18 @@ func (s *Base) DecodeFromBytes(data []byte) error {
 		if s.PathMeta.SegLen[i] > 0 && s.NumINF == 0 {
 			s.NumINF = i + 1
 		}
-		s.NumHops += int(s.PathMeta.SegLen[i])
+		s.NumLines += int(s.PathMeta.SegLen[i])
 	}
 	return nil
 }
 
+// IncPath increases the currHF index by n and the currINF index if appropriate.
 func (s *Base) IncPath(n int) error {
 	if s.NumINF == 0 {
 		return serrors.New("empty path cannot be increased")
 	}
-	if int(s.PathMeta.CurrHF) >= s.NumHops-n {
-		s.PathMeta.CurrHF = uint8(s.NumHops - n)
+	if int(s.PathMeta.CurrHF) >= s.NumLines-n {
+		s.PathMeta.CurrHF = uint8(s.NumLines - n)
 		return serrors.New("Incrementing path over end")
 	}
 	s.PathMeta.CurrHF += uint8(n)
@@ -69,8 +70,8 @@ func (s *Base) IncPath(n int) error {
 
 // IsXover returns whether we are at a crossover point.
 func (s *Base) IsXover() bool {
-	return s.PathMeta.CurrHF+5 < uint8(s.NumHops) &&
-		(s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+3) || s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+5))
+	return s.PathMeta.CurrHF+FlyoverLines < uint8(s.NumLines) &&
+		(s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+HopLines) || s.PathMeta.CurrINF != s.InfIndexForHF(s.PathMeta.CurrHF+FlyoverLines))
 
 }
 
@@ -80,6 +81,7 @@ func (s *Base) IsFirstHopAfterXover() bool {
 		s.PathMeta.CurrINF-1 == s.InfIndexForHF(s.PathMeta.CurrHF-1)
 }
 
+// InfIndexForHF returns the segment to which the HopField hf belongs
 func (s *Base) InfIndexForHF(hf uint8) uint8 {
 	switch {
 	case hf < s.PathMeta.SegLen[0]:
@@ -93,7 +95,7 @@ func (s *Base) InfIndexForHF(hf uint8) uint8 {
 
 // Len returns the length of the path in bytes.
 func (s *Base) Len() int {
-	return MetaLen + s.NumINF*path.InfoLen + s.NumHops*LineLen
+	return MetaLen + s.NumINF*path.InfoLen + s.NumLines*LineLen
 }
 
 // Type returns the type of the path.

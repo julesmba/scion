@@ -111,7 +111,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				if !afterProcessing {
 					return toMsg(t, spkt, dpath)
 				}
-				_ = dpath.IncPath(3)
+				_ = dpath.IncPath(hummingbird.HopLines)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
 				ret := toMsg(t, spkt, dpath)
 				ret.Addr = nil
@@ -146,7 +146,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				if !afterProcessing {
 					return toMsg(t, spkt, dpath)
 				}
-				_ = dpath.IncPath(3)
+				_ = dpath.IncPath(hummingbird.HopLines)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
 				ret := toMsg(t, spkt, dpath)
 				ret.Addr = nil
@@ -182,7 +182,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
 					return toMsg(t, spkt, dpath)
 				}
-				require.NoError(t, dpath.IncPath(3))
+				require.NoError(t, dpath.IncPath(hummingbird.HopLines))
 				ret := toMsg(t, spkt, dpath)
 				ret.Addr = nil
 				ret.Flags, ret.NN, ret.N, ret.OOB = 0, 0, 0, nil
@@ -243,8 +243,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							CurrHF: 6,
 							SegLen: [3]uint8{6, 6, 0},
 						},
-						NumINF:  2,
-						NumHops: 12,
+						NumINF:   2,
+						NumLines: 12,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -266,7 +266,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					dpath.InfoFields[0].UpdateSegID(dpath.HopFields[2].HopField.Mac)
 					return toMsg(t, spkt, dpath)
 				}
-				require.NoError(t, dpath.IncPath(3))
+				require.NoError(t, dpath.IncPath(hummingbird.HopLines))
 				ret := toMsg(t, spkt, dpath)
 				ret.Addr = &net.UDPAddr{IP: net.ParseIP("10.0.200.200").To4(), Port: 30043}
 				ret.Flags, ret.NN, ret.N, ret.OOB = 0, 0, 0, nil
@@ -324,8 +324,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							CurrINF: 1,
 							SegLen:  [3]uint8{3, 6, 0},
 						},
-						NumINF:  2,
-						NumHops: 9,
+						NumINF:   2,
+						NumLines: 9,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -355,7 +355,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				if !afterProcessing {
 					return toMsg(t, spkt, dpath)
 				}
-				_ = dpath.IncPath(3)
+				_ = dpath.IncPath(hummingbird.HopLines)
 
 				// ... The SegID accumulator wasn't updated from HF[1],
 				// it is still the same. That is the key behavior.
@@ -393,8 +393,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							CurrINF: 0,
 							SegLen:  [3]uint8{6, 3, 0},
 						},
-						NumINF:  2,
-						NumHops: 9,
+						NumINF:   2,
+						NumLines: 9,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -432,7 +432,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					return toMsg(t, spkt, dpath)
 				}
 
-				_ = dpath.IncPath(3)
+				_ = dpath.IncPath(hummingbird.HopLines)
 
 				// The SegID should not get updated on arrival. If it is, then MAC validation
 				// of HF1 will fail. Otherwise, this isn't visible because we changed segment.
@@ -472,8 +472,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							CurrINF: 1,
 							SegLen:  [3]uint8{3, 9, 0},
 						},
-						NumINF:  2,
-						NumHops: 12,
+						NumINF:   2,
+						NumLines: 12,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -509,7 +509,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					// so, already set.
 					return toMsg(t, spkt, dpath)
 				}
-				_ = dpath.IncPath(3)
+				_ = dpath.IncPath(hummingbird.HopLines)
 
 				// ... The SegID accumulator should have been updated.
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[2].HopField.Mac)
@@ -547,8 +547,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							CurrINF: 0,
 							SegLen:  [3]uint8{9, 3, 0},
 						},
-						NumINF:  2,
-						NumHops: 12,
+						NumINF:   2,
+						NumLines: 12,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -592,7 +592,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					return toMsg(t, spkt, dpath)
 				}
 
-				_ = dpath.IncPath(3)
+				_ = dpath.IncPath(hummingbird.HopLines)
 
 				// After-processing, the SegID should have been updated
 				// (on ingress) to be that of HF[1], which happens to be
@@ -625,7 +625,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					{Flyover: true, HopField: path.HopField{ConsIngress: 01, ConsEgress: 0}, ResStartTime: 123, Duration: 304},
 				}
 				dpath.Base.PathMeta.SegLen[0] = 11
-				dpath.Base.NumHops = 11
+				dpath.Base.NumLines = 11
 				dpath.Base.PathMeta.CurrHF = 6
 				dpath.HopFields[2].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
 				if afterProcessing {
@@ -662,13 +662,13 @@ func TestProcessHbirdPacket(t *testing.T) {
 				}
 				dpath.Base.PathMeta.CurrHF = 0
 				dpath.Base.PathMeta.SegLen[0] = 15
-				dpath.NumHops = 15
+				dpath.NumLines = 15
 				dpath.HopFields[0].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[0], dpath.Base.PathMeta)
 				if !afterProcessing {
 					return toMsg(t, spkt, dpath)
 				}
 				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
-				_ = dpath.IncPath(5)
+				_ = dpath.IncPath(hummingbird.FlyoverLines)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
 				ret := toMsg(t, spkt, dpath)
 				ret.Addr = nil
@@ -695,7 +695,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					{Flyover: true, HopField: path.HopField{ConsIngress: 01, ConsEgress: 0}, ResStartTime: 5, Duration: 2},
 				}
 				dpath.Base.PathMeta.SegLen[0] = 11
-				dpath.Base.NumHops = 11
+				dpath.Base.NumLines = 11
 				dpath.Base.PathMeta.CurrHF = 6
 				dpath.HopFields[2].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
 				ret := toMsg(t, spkt, dpath)
@@ -729,13 +729,13 @@ func TestProcessHbirdPacket(t *testing.T) {
 				}
 				dpath.Base.PathMeta.SegLen[0] = 11
 				dpath.Base.PathMeta.CurrHF = 3
-				dpath.Base.NumHops = 11
+				dpath.Base.NumLines = 11
 				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
 				if !afterProcessing {
 					return toMsg(t, spkt, dpath)
 				}
 				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
-				_ = dpath.IncPath(5)
+				_ = dpath.IncPath(hummingbird.FlyoverLines)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
 				ret := toMsg(t, spkt, dpath)
 				ret.Addr = nil
@@ -765,7 +765,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
 				}
 				dpath.Base.PathMeta.CurrHF = 3
-				dpath.Base.NumHops = 11
+				dpath.Base.NumLines = 11
 				dpath.Base.PathMeta.SegLen[0] = 11
 
 				dpath.InfoFields[0].ConsDir = false
@@ -776,7 +776,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					return toMsg(t, spkt, dpath)
 				}
 				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
-				require.NoError(t, dpath.IncPath(5))
+				require.NoError(t, dpath.IncPath(hummingbird.FlyoverLines))
 				ret := toMsg(t, spkt, dpath)
 				ret.Addr = nil
 				ret.Flags, ret.NN, ret.N, ret.OOB = 0, 0, 0, nil
@@ -806,7 +806,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					{HopField: path.HopField{ConsIngress: 50, ConsEgress: 51}},
 				}
 				dpath.Base.PathMeta.SegLen[0] = 11
-				dpath.Base.NumHops = 11
+				dpath.Base.NumLines = 11
 				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
 				if afterProcessing {
 					// dpath.HopFields[1].Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1])
@@ -843,8 +843,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							SegLen: [3]uint8{6, 8, 0},
 							BaseTS: util.TimeToSecs(now),
 						},
-						NumINF:  2,
-						NumHops: 16,
+						NumINF:   2,
+						NumLines: 16,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -879,7 +879,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				//dpath.HopFields[3].Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3])
 				dpath.PathMeta.SegLen[0] -= 2
 				dpath.PathMeta.SegLen[1] += 2
-				require.NoError(t, dpath.IncPath(5))
+				require.NoError(t, dpath.IncPath(hummingbird.FlyoverLines))
 				ret := toMsg(t, spkt, dpath)
 				ret.Addr = &net.UDPAddr{IP: net.ParseIP("10.0.200.200").To4(), Port: 30043}
 				ret.Flags, ret.NN, ret.N, ret.OOB = 0, 0, 0, nil
@@ -910,8 +910,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							SegLen: [3]uint8{8, 6, 0},
 							BaseTS: util.TimeToSecs(now),
 						},
-						NumINF:  2,
-						NumHops: 14,
+						NumINF:   2,
+						NumLines: 14,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -950,7 +950,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				//dpath.HopFields[3].Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3])
 				dpath.PathMeta.SegLen[0] -= 2
 				dpath.PathMeta.SegLen[1] += 2
-				require.NoError(t, dpath.IncPath(3))
+				require.NoError(t, dpath.IncPath(hummingbird.HopLines))
 				ret := toMsg(t, spkt, dpath)
 				ret.Addr = &net.UDPAddr{IP: net.ParseIP("10.0.200.200").To4(), Port: 30043}
 				ret.Flags, ret.NN, ret.N, ret.OOB = 0, 0, 0, nil
@@ -986,8 +986,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							SegLen:  [3]uint8{6, 8, 0},
 							BaseTS:  util.TimeToSecs(now),
 						},
-						NumINF:  2,
-						NumHops: 14,
+						NumINF:   2,
+						NumLines: 14,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -1021,7 +1021,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 
 				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[2].HopField.Mac)
-				require.NoError(t, dpath.IncPath(5))
+				require.NoError(t, dpath.IncPath(hummingbird.FlyoverLines))
 				dpath.PathMeta.SegLen[0] += 2
 				dpath.PathMeta.SegLen[1] -= 2
 				ret := toMsg(t, spkt, dpath)
@@ -1060,8 +1060,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							SegLen:  [3]uint8{3, 8, 0},
 							BaseTS:  util.TimeToSecs(now),
 						},
-						NumINF:  2,
-						NumHops: 11,
+						NumINF:   2,
+						NumLines: 11,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -1091,7 +1091,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				if !afterProcessing {
 					return toMsg(t, spkt, dpath)
 				}
-				_ = dpath.IncPath(5)
+				_ = dpath.IncPath(hummingbird.FlyoverLines)
 				// deaggregate MAC
 				dpath.HopFields[1].HopField.Mac = computeMAC(
 					t, key, dpath.InfoFields[1], dpath.HopFields[1].HopField)
@@ -1132,8 +1132,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							SegLen:  [3]uint8{8, 3, 0},
 							BaseTS:  util.TimeToSecs(now),
 						},
-						NumINF:  2,
-						NumHops: 11,
+						NumINF:   2,
+						NumLines: 11,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -1171,7 +1171,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					return toMsg(t, spkt, dpath)
 				}
 
-				_ = dpath.IncPath(5)
+				_ = dpath.IncPath(hummingbird.FlyoverLines)
 				// deaggregate MAc
 				dpath.HopFields[1].HopField.Mac = computeMAC(
 					t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
@@ -1215,8 +1215,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							SegLen:  [3]uint8{3, 11, 0},
 							BaseTS:  util.TimeToSecs(now),
 						},
-						NumINF:  2,
-						NumHops: 14,
+						NumINF:   2,
+						NumLines: 14,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -1252,7 +1252,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					// so, already set.
 					return toMsg(t, spkt, dpath)
 				}
-				_ = dpath.IncPath(5)
+				_ = dpath.IncPath(hummingbird.FlyoverLines)
 				// mac should be deaggregated, and used for updateSegID
 				dpath.HopFields[2].HopField.Mac = computeMAC(
 					t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
@@ -1294,8 +1294,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 							SegLen:  [3]uint8{11, 3, 0},
 							BaseTS:  util.TimeToSecs(now),
 						},
-						NumINF:  2,
-						NumHops: 14,
+						NumINF:   2,
+						NumLines: 14,
 					},
 					InfoFields: []path.InfoField{
 						// up seg
@@ -1342,7 +1342,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 					return toMsg(t, spkt, dpath)
 				}
 
-				_ = dpath.IncPath(5)
+				_ = dpath.IncPath(hummingbird.FlyoverLines)
 				// deaggregate MAC)
 				dpath.HopFields[1].HopField.Mac = computeMAC(
 					t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
@@ -1419,8 +1419,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  1,
-						NumHops: 6,
+						NumINF:   1,
+						NumLines: 6,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)},
@@ -1482,8 +1482,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  1,
-						NumHops: 6,
+						NumINF:   1,
+						NumLines: 6,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: false, Timestamp: util.TimeToSecs(now)},
@@ -1545,8 +1545,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 18,
+						NumINF:   2,
+						NumLines: 18,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)},
@@ -1685,8 +1685,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 18,
+						NumINF:   2,
+						NumLines: 18,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: false, Timestamp: util.TimeToSecs(now)},
@@ -1824,8 +1824,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 18,
+						NumINF:   2,
+						NumLines: 18,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: false, Timestamp: util.TimeToSecs(now)},
@@ -1937,8 +1937,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  3,
-						NumHops: 18,
+						NumINF:   3,
+						NumLines: 18,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)},
@@ -2047,8 +2047,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 9,
+						NumINF:   2,
+						NumLines: 9,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, Peer: true, ConsDir: true, Timestamp: util.TimeToSecs(now)},
@@ -2121,8 +2121,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 9,
+						NumINF:   2,
+						NumLines: 9,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, Peer: true, ConsDir: false, Timestamp: util.TimeToSecs(now)},
@@ -2196,8 +2196,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 12,
+						NumINF:   2,
+						NumLines: 12,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, Peer: true, ConsDir: true, Timestamp: util.TimeToSecs(now)},
@@ -2312,8 +2312,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 12,
+						NumINF:   2,
+						NumLines: 12,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, Peer: true, ConsDir: false, Timestamp: util.TimeToSecs(now)},
@@ -2426,8 +2426,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  1,
-						NumHops: 10,
+						NumINF:   1,
+						NumLines: 10,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)},
@@ -2494,8 +2494,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  1,
-						NumHops: 10,
+						NumINF:   1,
+						NumLines: 10,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: false, Timestamp: util.TimeToSecs(now)},
@@ -2561,8 +2561,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 28,
+						NumINF:   2,
+						NumLines: 28,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)},
@@ -2712,8 +2712,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 28,
+						NumINF:   2,
+						NumLines: 28,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: false, Timestamp: util.TimeToSecs(now)},
@@ -2861,8 +2861,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 28,
+						NumINF:   2,
+						NumLines: 28,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: false, Timestamp: util.TimeToSecs(now)},
@@ -2987,8 +2987,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  3,
-						NumHops: 26,
+						NumINF:   3,
+						NumLines: 26,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)},
@@ -3106,8 +3106,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 15,
+						NumINF:   2,
+						NumLines: 15,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, Peer: true, ConsDir: true, Timestamp: util.TimeToSecs(now)},
@@ -3184,8 +3184,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 15,
+						NumINF:   2,
+						NumLines: 15,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, Peer: true, ConsDir: false, Timestamp: util.TimeToSecs(now)},
@@ -3263,8 +3263,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 20,
+						NumINF:   2,
+						NumLines: 20,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, Peer: true, ConsDir: true, Timestamp: util.TimeToSecs(now)},
@@ -3384,8 +3384,8 @@ func TestHbirdPacketPath(t *testing.T) {
 							BaseTS:    util.TimeToSecs(now),
 							HighResTS: 500 << 22,
 						},
-						NumINF:  2,
-						NumHops: 20,
+						NumINF:   2,
+						NumLines: 20,
 					},
 					InfoFields: []path.InfoField{
 						{SegID: 0x111, Peer: true, ConsDir: false, Timestamp: util.TimeToSecs(now)},
@@ -3531,8 +3531,8 @@ func prepHbirdMsg(now time.Time) (*slayers.SCION, *hummingbird.Decoded) {
 				BaseTS:    util.TimeToSecs(now),
 				HighResTS: 500 << 22,
 			},
-			NumINF:  1,
-			NumHops: 9,
+			NumINF:   1,
+			NumLines: 9,
 		},
 		InfoFields: []path.InfoField{
 			{SegID: 0x111, ConsDir: true, Timestamp: util.TimeToSecs(now)},

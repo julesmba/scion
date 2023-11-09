@@ -84,7 +84,7 @@ func determinePeerHbird(pathMeta hummingbird.MetaHdr, inf path.InfoField) (bool,
 	// because we already know this is a well-formed peering path.
 	currHF := pathMeta.CurrHF
 	segLen := pathMeta.SegLen[0]
-	return currHF == segLen-3 || currHF == segLen-5 || currHF == segLen, nil
+	return currHF == segLen-hummingbird.HopLines || currHF == segLen-hummingbird.FlyoverLines || currHF == segLen, nil
 }
 
 func (p *scionPacketProcessor) determinePeerHbird() (processResult, error) {
@@ -249,7 +249,7 @@ func (p *scionPacketProcessor) ingressInterfaceHbird() uint16 {
 			panic(err)
 		}
 		// Previous hop should always be a non-flyover field, as flyover is transferred to second hop on xover
-		hop, err = p.hbirdPath.GetHopField(int(p.hbirdPath.PathMeta.CurrHF) - 3)
+		hop, err = p.hbirdPath.GetHopField(int(p.hbirdPath.PathMeta.CurrHF) - hummingbird.HopLines)
 		if err != nil { // cannot be out of range
 			panic(err)
 		}
@@ -387,7 +387,7 @@ func (p *scionPacketProcessor) doFlyoverXover() error {
 	copy(p.hopField.Mac[:], p.cachedMac[0:6])
 	p.hbirdPath.ReplaceCurrentMac(p.cachedMac)
 	// Aggregate Mac of second hop
-	mac, err := p.hbirdPath.GetMac(int(p.hbirdPath.PathMeta.CurrHF) + 3)
+	mac, err := p.hbirdPath.GetMac(int(p.hbirdPath.PathMeta.CurrHF) + hummingbird.HopLines)
 	if err != nil {
 		return err
 	}
@@ -414,7 +414,7 @@ func (p *scionPacketProcessor) doHbirdXover() (processResult, error) {
 			return processResult{}, err
 		}
 	}
-	if err := p.hbirdPath.IncPath(3); err != nil {
+	if err := p.hbirdPath.IncPath(hummingbird.HopLines); err != nil {
 		// TODO parameter problem invalid path
 		return processResult{}, serrors.WrapStr("incrementing path", err)
 	}
@@ -444,9 +444,9 @@ func (p *scionPacketProcessor) processHbirdEgress() error {
 		}
 	}
 
-	n := 3
+	n := hummingbird.HopLines
 	if p.flyoverField.Flyover {
-		n = 5
+		n = hummingbird.FlyoverLines
 	}
 	if err := p.hbirdPath.IncPath(n); err != nil {
 		// TODO parameter problem invalid path
@@ -623,7 +623,7 @@ func (p *slowPathPacketProcessor) prepareHbirdSCMP(
 	if revPath.IsXover() && !peering {
 		// An effective cross-over is a change of segment other than at
 		// a peering hop.
-		if err := revPath.IncPath(3); err != nil {
+		if err := revPath.IncPath(hummingbird.HopLines); err != nil {
 			return nil, serrors.Wrap(cannotRoute, err, "details", "reverting cross over for SCMP")
 		}
 	}
@@ -637,7 +637,7 @@ func (p *slowPathPacketProcessor) prepareHbirdSCMP(
 			hopField := revPath.HopFields[revPath.PathMeta.CurrHF]
 			infoField.UpdateSegID(hopField.HopField.Mac)
 		}
-		if err := revPath.IncPath(3); err != nil {
+		if err := revPath.IncPath(hummingbird.HopLines); err != nil {
 			return nil, serrors.Wrap(cannotRoute, err, "details", "incrementing path for SCMP")
 		}
 	} //TODO else, make sure MAC is deaggregated?

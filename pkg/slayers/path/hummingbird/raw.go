@@ -83,7 +83,7 @@ func (s *Raw) ToDecoded() (*Decoded, error) {
 	return decoded, nil
 }
 
-// IncPath increments the path and writes it to the buffer.
+// IncPath increments the path by n and writes it to the buffer.
 func (s *Raw) IncPath(n int) error {
 	if err := s.Base.IncPath(n); err != nil {
 		return err
@@ -131,19 +131,19 @@ func (s *Raw) SetInfoField(info path.InfoField, idx int) error {
 
 // GetHopField returns the HopField at a given index.
 func (s *Raw) GetHopField(idx int) (FlyoverHopField, error) {
-	if idx >= s.NumHops-2 {
+	if idx >= s.NumLines-HopLines+1 {
 		return FlyoverHopField{},
-			serrors.New("HopField index out of bounds", "max", s.NumHops-3, "actual", idx)
+			serrors.New("HopField index out of bounds", "max", s.NumLines-HopLines, "actual", idx)
 	}
 	hopOffset := MetaLen + s.NumINF*path.InfoLen + idx*LineLen
 	hop := FlyoverHopField{}
 	// Let the decoder read a big enough slice in case it is a FlyoverHopField
 	maxHopLen := FlyoverLen
-	if idx > s.NumHops-5 {
-		if idx == s.NumHops-3 {
+	if idx > s.NumLines-FlyoverLines {
+		if idx == s.NumLines-HopLines {
 			maxHopLen = HopLen
 		} else {
-			return FlyoverHopField{}, serrors.New("Invalid hopfield index", "NumHops", s.NumHops, "index", idx)
+			return FlyoverHopField{}, serrors.New("Invalid hopfield index", "NumHops", s.NumLines, "index", idx)
 		}
 	}
 	if err := hop.DecodeFromBytes(s.Raw[hopOffset : hopOffset+maxHopLen]); err != nil {
@@ -159,8 +159,8 @@ func (s *Raw) GetCurrentHopField() (FlyoverHopField, error) {
 }
 
 func (s *Raw) ReplacMac(idx int, mac []byte) error {
-	if idx >= s.NumHops-2 {
-		return serrors.New("HopField index out of bounds", "max", s.NumHops-3, "actual", idx)
+	if idx >= s.NumLines-HopLines+1 {
+		return serrors.New("HopField index out of bounds", "max", s.NumLines-HopLines, "actual", idx)
 	}
 	offset := s.NumINF*path.InfoLen + MetaLen + idx*LineLen + MacOffset
 	if n := copy(s.Raw[offset:offset+path.MacLen], mac[:path.MacLen]); n != path.MacLen {
@@ -176,8 +176,8 @@ func (s *Raw) ReplaceCurrentMac(mac []byte) error {
 
 // Returns a slice of the MAC of the hopfield starting at index idx
 func (s *Raw) GetMac(idx int) ([]byte, error) {
-	if idx >= s.NumHops-2 {
-		return nil, serrors.New("HopField index out of bounds", "max", s.NumHops-3, "actual", idx)
+	if idx >= s.NumLines-HopLines+1 {
+		return nil, serrors.New("HopField index out of bounds", "max", s.NumLines-HopLines, "actual", idx)
 	}
 	offset := s.NumINF*path.InfoLen + MetaLen + idx*LineLen + MacOffset
 	return s.Raw[offset : offset+path.MacLen], nil
@@ -189,8 +189,8 @@ func (s *Raw) GetMac(idx int) ([]byte, error) {
 // If replacing a FlyoverHopField with a Hopfield, it is replaced by a FlyoverHopField with dummy values.
 // This works for SCMP packets as Flyover hops are removed later in the process of building a SCMP packet.
 func (s *Raw) SetHopField(hop FlyoverHopField, idx int) error {
-	if idx >= s.NumHops-2 {
-		return serrors.New("HopField index out of bounds", "max", s.NumHops-3, "actual", idx)
+	if idx >= s.NumLines-HopLines+1 {
+		return serrors.New("HopField index out of bounds", "max", s.NumLines-HopLines, "actual", idx)
 	}
 	hopOffset := MetaLen + s.NumINF*path.InfoLen + idx*LineLen
 	if s.Raw[hopOffset]&0x80 == 0x80 {
@@ -202,8 +202,8 @@ func (s *Raw) SetHopField(hop FlyoverHopField, idx int) error {
 		hop.Flyover = true
 	}
 	if hop.Flyover {
-		if idx >= s.NumHops-4 {
-			return serrors.New("FlyoverHopField index out of bounds", "max", s.NumHops-5, "actual", idx)
+		if idx >= s.NumLines-FlyoverLines+1 {
+			return serrors.New("FlyoverHopField index out of bounds", "max", s.NumLines-FlyoverLines, "actual", idx)
 		}
 		hopOffset := MetaLen + s.NumINF*path.InfoLen + idx*LineLen
 		if s.Raw[hopOffset]&0x80 == 0x00 {
@@ -221,7 +221,7 @@ func (s *Raw) IsFirstHop() bool {
 
 // IsLastHop returns whether the current hop is the last hop on the path.
 func (s *Raw) IsLastHop() bool {
-	return int(s.PathMeta.CurrHF) == (s.NumHops-3) || int(s.PathMeta.CurrHF) == (s.NumHops-5)
+	return int(s.PathMeta.CurrHF) == (s.NumLines-HopLines) || int(s.PathMeta.CurrHF) == (s.NumLines-FlyoverLines)
 }
 
 // Returns the egress interface of the next hop
@@ -235,8 +235,8 @@ func (s *Raw) GetNextEgress() (uint16, error) {
 		idx += HopLines
 		hopOffset += HopLines * LineLen
 	}
-	if idx >= s.NumHops-2 {
-		return 0, serrors.New("HopField index out of bounds", "max", s.NumHops-3, "actual", idx)
+	if idx >= s.NumLines-2 {
+		return 0, serrors.New("HopField index out of bounds", "max", s.NumLines-HopLines, "actual", idx)
 	}
 	if s.isConsdir(uint8(idx)) {
 		return binary.BigEndian.Uint16(s.Raw[hopOffset+4 : hopOffset+6]), nil
@@ -262,8 +262,8 @@ func (s *Raw) GetPreviousIngress() (uint16, error) {
 // DOES NOT adapt MACS.
 func (s *Raw) DoFlyoverXover() error {
 	idx := int(s.Base.PathMeta.CurrHF)
-	if idx >= s.NumHops-7 {
-		return serrors.New("CurrHF out of bounds for flyover crossover", "max", s.NumHops-7, "actual", idx)
+	if idx >= s.NumLines-7 {
+		return serrors.New("CurrHF out of bounds for flyover crossover", "max", s.NumLines-7, "actual", idx)
 	}
 	if s.PathMeta.CurrINF == 2 {
 		return serrors.New("Cannot do FlyoverXover if CurrINF = 2")

@@ -24,7 +24,6 @@ import (
 
 // MetaLen is the length of the PathMetaHeader.
 const MetaLen = 4
-const MetaLenHBird = 12
 
 const PathType path.Type = 1
 

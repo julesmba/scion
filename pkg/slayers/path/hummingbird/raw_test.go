@@ -17,8 +17,8 @@ var emptyRawTestPath = &hummingbird.Raw{
 			CurrHF:  0,
 			SegLen:  [3]uint8{0, 0, 0},
 		},
-		NumINF:  0,
-		NumHops: 0,
+		NumINF:   0,
+		NumLines: 0,
 	},
 	Raw: make([]byte, hummingbird.MetaLen),
 }
@@ -32,8 +32,8 @@ var rawHbirdTestPath = &hummingbird.Raw{
 			BaseTS:    808,
 			HighResTS: 1234,
 		},
-		NumINF:  2,
-		NumHops: 16,
+		NumINF:   2,
+		NumLines: 16,
 	},
 	Raw: rawHbirdPath,
 }
@@ -188,7 +188,7 @@ func createHbirdPath(currHF uint8, numHops int) *hummingbird.Raw {
 			PathMeta: hummingbird.MetaHdr{
 				CurrHF: currHF,
 			},
-			NumHops: numHops,
+			NumLines: numHops,
 		},
 	}
 	return hbirdRaw

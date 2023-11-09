@@ -263,7 +263,7 @@ func (c *HummingbirdClient) RequestReservationForASes(asin []addr.IA, bw uint16,
 		}
 		// set flyover
 		c.dec.HopFields[i].Flyover = true
-		c.dec.NumHops += 2
+		c.dec.NumLines += 2
 		c.dec.PathMeta.SegLen[infIdx] += 2
 		// set other fields
 		c.dec.HopFields[i].Bw = c.reservations[i].Bw

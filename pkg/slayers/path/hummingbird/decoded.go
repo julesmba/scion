@@ -47,10 +47,10 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 	}
 
 	// Allocate maximum number of possible hopfields based on length
-	s.HopFields = make([]FlyoverHopField, s.NumHops/3)
+	s.HopFields = make([]FlyoverHopField, s.NumLines/3)
 	i, j := 0, 0
 	// If last hop is not a flyover hop, decode it with only 12 bytes slice
-	for ; j < s.NumHops-3; i++ {
+	for ; j < s.NumLines-HopLines; i++ {
 		if err := s.HopFields[i].DecodeFromBytes(data[offset : offset+FlyoverLen]); err != nil {
 			return err
 		}
@@ -63,13 +63,13 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 
 		if s.HopFields[i].Flyover {
 			offset += FlyoverLen
-			j += 5
+			j += FlyoverLines
 		} else {
 			offset += HopLen
-			j += 3
+			j += HopLines
 		}
 	}
-	if j == s.NumHops-3 {
+	if j == s.NumLines-HopLines {
 		if err := s.HopFields[i].DecodeFromBytes(data[offset : offset+HopLen]); err != nil {
 			return err
 		}
@@ -149,7 +149,7 @@ func (s *Decoded) Reverse() (path.Path, error) {
 	}
 	// Update CurrINF and CurrHF and SegLens
 	s.PathMeta.CurrINF = uint8(s.NumINF) - s.PathMeta.CurrINF - 1
-	s.PathMeta.CurrHF = uint8(s.NumHops) - s.PathMeta.CurrHF - 3
+	s.PathMeta.CurrHF = uint8(s.NumLines) - s.PathMeta.CurrHF - 3
 
 	return s, nil
 }
@@ -170,7 +170,7 @@ func (s *Decoded) RemoveFlyovers() error {
 			if s.PathMeta.CurrHF > offset {
 				s.PathMeta.CurrHF -= 2
 			}
-			s.Base.NumHops -= 2
+			s.Base.NumLines -= 2
 			s.PathMeta.SegLen[idxInf] -= 2
 		}
 		segCount += 3
@@ -180,7 +180,7 @@ func (s *Decoded) RemoveFlyovers() error {
 		} else if s.PathMeta.SegLen[idxInf] < segCount {
 			return serrors.New("new hopfields boundaries do not match new segment lengths after flyover removal")
 		}
-		offset += 3
+		offset += HopLines
 	}
 	return nil
 }
@@ -222,10 +222,10 @@ func (s *Decoded) convertBaseFromScion(d scion.Base) {
 	s.Base.NumINF = d.NumINF
 	s.Base.PathMeta.CurrINF = d.PathMeta.CurrINF
 
-	s.Base.NumHops = d.NumHops * 3
-	s.Base.PathMeta.CurrHF = d.PathMeta.CurrHF * 3
+	s.Base.NumLines = d.NumHops * HopLines
+	s.Base.PathMeta.CurrHF = d.PathMeta.CurrHF * HopLines
 
-	s.Base.PathMeta.SegLen[0] = d.PathMeta.SegLen[0] * 3
-	s.Base.PathMeta.SegLen[1] = d.PathMeta.SegLen[1] * 3
-	s.Base.PathMeta.SegLen[2] = d.PathMeta.SegLen[2] * 3
+	s.Base.PathMeta.SegLen[0] = d.PathMeta.SegLen[0] * HopLines
+	s.Base.PathMeta.SegLen[1] = d.PathMeta.SegLen[1] * HopLines
+	s.Base.PathMeta.SegLen[2] = d.PathMeta.SegLen[2] * HopLines
 }

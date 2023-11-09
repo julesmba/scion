@@ -78,8 +78,8 @@ var decodedHbirdTestPath = &hummingbird.Decoded{
 			BaseTS:    808,
 			HighResTS: 1234,
 		},
-		NumINF:  2,
-		NumHops: 16,
+		NumINF:   2,
+		NumLines: 16,
 	},
 	InfoFields:     testInfoFields,
 	HopFields:      testFlyoverFields,
@@ -235,7 +235,7 @@ func mkDecodedHbirdPath(t *testing.T, pcase hbirdPathCase, infIdx, hopIdx uint8)
 	}
 	s.PathMeta = meta
 	s.NumINF = len(pcase.infos)
-	s.NumHops = i
+	s.NumLines = i
 
 	return s
 }
