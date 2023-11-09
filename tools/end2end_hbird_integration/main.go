@@ -286,6 +286,8 @@ func clientTemplate(progressSock string) integration.Cmd {
 			"-local", integration.SrcAddrPattern + ":0",
 			"-remote", integration.DstAddrPattern + ":" + integration.ServerPortReplace,
 			fmt.Sprintf("-epic=%t", epic),
+			fmt.Sprintf("-flyovers=%t", flyovers),
+			fmt.Sprintf("-partial=%t", partial),
 		},
 	}
 	if len(features) != 0 {

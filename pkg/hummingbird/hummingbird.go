@@ -202,6 +202,9 @@ func (c *HummingbirdClient) GetPathASes() []addr.IA {
 func (c *HummingbirdClient) RequestReservationForASes(asin []addr.IA, bw uint16, start uint32, duration uint16) error {
 	j := 0
 	for i := range c.dec.HopFields {
+		if j >= len(asin) || asin[j] != c.ases[i] {
+			continue
+		}
 
 		var infIdx int
 		var firstHopAfterXover, lastHopBeforeXover bool
