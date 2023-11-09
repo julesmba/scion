@@ -93,7 +93,7 @@ func (s *Base) InfIndexForHF(hf uint8) uint8 {
 
 // Len returns the length of the path in bytes.
 func (s *Base) Len() int {
-	return MetaLen + s.NumINF*path.InfoLen + s.NumHops*path.LineLen
+	return MetaLen + s.NumINF*path.InfoLen + s.NumHops*LineLen
 }
 
 // Type returns the type of the path.

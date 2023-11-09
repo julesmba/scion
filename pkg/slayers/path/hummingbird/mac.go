@@ -47,21 +47,6 @@ func DeriveAuthKey(block cipher.Block, resId uint32, bw, in, eg uint16, startTim
 	return buffer[0:16]
 }
 
-// shifts left a 16 bytes array
-func shiftLeft(in []byte) {
-	flag := (in[8]&byte(128))>>7 == 1
-	binary.BigEndian.PutUint64(in[0:8], binary.BigEndian.Uint64(in[0:8])<<1)
-	binary.BigEndian.PutUint64(in[8:16], binary.BigEndian.Uint64(in[8:16])<<1)
-	if flag {
-		in[7] |= 0x01
-	}
-}
-
-func xor(a, b []byte) {
-	binary.BigEndian.PutUint64(a[0:8], binary.BigEndian.Uint64(a[0:8])^binary.BigEndian.Uint64(b[0:8]))
-	binary.BigEndian.PutUint64(a[8:16], binary.BigEndian.Uint64(a[8:16])^binary.BigEndian.Uint64(b[8:16]))
-}
-
 // Computes full flyover mac vk
 // Needs a xkbuffer of 44 uint32s to store the expanded keys for aes
 // dummy buffer is memory used by key expansion to store decryption keys

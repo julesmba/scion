@@ -51,7 +51,7 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 	i, j := 0, 0
 	// If last hop is not a flyover hop, decode it with only 12 bytes slice
 	for ; j < s.NumHops-3; i++ {
-		if err := s.HopFields[i].DecodeFromBytes(data[offset : offset+path.FlyoverLen]); err != nil {
+		if err := s.HopFields[i].DecodeFromBytes(data[offset : offset+FlyoverLen]); err != nil {
 			return err
 		}
 		// Set FirstHopPerSeg
@@ -62,7 +62,7 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 		}
 
 		if s.HopFields[i].Flyover {
-			offset += path.FlyoverLen
+			offset += FlyoverLen
 			j += 5
 		} else {
 			offset += path.HopLen
@@ -108,10 +108,10 @@ func (s *Decoded) SerializeTo(b []byte) error {
 	}
 	for _, hop := range s.HopFields {
 		if hop.Flyover {
-			if err := hop.SerializeTo(b[offset : offset+path.FlyoverLen]); err != nil {
+			if err := hop.SerializeTo(b[offset : offset+FlyoverLen]); err != nil {
 				return err
 			}
-			offset += path.FlyoverLen
+			offset += FlyoverLen
 		} else {
 			if err := hop.SerializeTo(b[offset : offset+path.HopLen]); err != nil {
 				return err
