@@ -35,9 +35,9 @@ func DeriveAuthKey(block cipher.Block, resId uint32, bw, in, eg uint16, startTim
 		buffer = make([]byte, AkBufferSize)
 	}
 	//prepare input
-	binary.BigEndian.PutUint32(buffer[0:4], resId<<10|uint32(bw))
-	binary.BigEndian.PutUint16(buffer[4:6], in)
-	binary.BigEndian.PutUint16(buffer[6:8], eg)
+	binary.BigEndian.PutUint16(buffer[0:2], in)
+	binary.BigEndian.PutUint16(buffer[2:4], eg)
+	binary.BigEndian.PutUint32(buffer[4:8], resId<<10|uint32(bw))
 	binary.BigEndian.PutUint32(buffer[8:12], startTime)
 	binary.BigEndian.PutUint16(buffer[12:14], resDuration)
 	binary.BigEndian.PutUint16(buffer[14:16], 0) //padding

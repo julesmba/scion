@@ -28,11 +28,11 @@ func TestDeriveAuthKey(t *testing.T) {
 
 	// Compute expected result with library CBC
 	expected := make([]byte, 16)
-	binary.BigEndian.PutUint32(expected[0:4], resId<<10)
-	expected[2] |= byte(bw >> 8)
-	expected[3] = byte(bw)
-	binary.BigEndian.PutUint16(expected[4:6], in)
-	binary.BigEndian.PutUint16(expected[6:8], eg)
+	binary.BigEndian.PutUint16(expected[0:2], in)
+	binary.BigEndian.PutUint16(expected[2:4], eg)
+	binary.BigEndian.PutUint32(expected[4:8], resId<<10)
+	expected[6] |= byte(bw >> 8)
+	expected[7] = byte(bw)
 	binary.BigEndian.PutUint32(expected[8:12], start)
 	binary.BigEndian.PutUint16(expected[12:14], duration)
 	binary.BigEndian.PutUint16(expected[14:16], 0)
@@ -65,7 +65,7 @@ func TestDeriveAuthKeyGoldenData(t *testing.T) {
 	var start uint32 = 0x0030001
 	var duration uint16 = 0x0203
 
-	expected := [16]byte{0x7e, 0x61, 0x4, 0x91, 0x30, 0x6b, 0x95, 0xec, 0xb5, 0x75, 0xc6, 0xe9, 0x4c, 0x5a, 0x89, 0x84}
+	expected := [16]byte{0x25, 0xe6, 0xb9, 0x75, 0x96, 0x7, 0x3, 0x93, 0xef, 0x54, 0x73, 0x67, 0x1b, 0xf6, 0x3a, 0x9a}
 
 	// Run DeriveAuthKey Function
 	block, err := aes.NewCipher(sv)
