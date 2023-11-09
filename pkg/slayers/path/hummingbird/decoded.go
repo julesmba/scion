@@ -65,12 +65,12 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 			offset += FlyoverLen
 			j += 5
 		} else {
-			offset += path.HopLen
+			offset += HopLen
 			j += 3
 		}
 	}
 	if j == s.NumHops-3 {
-		if err := s.HopFields[i].DecodeFromBytes(data[offset : offset+path.HopLen]); err != nil {
+		if err := s.HopFields[i].DecodeFromBytes(data[offset : offset+HopLen]); err != nil {
 			return err
 		}
 		i++
@@ -113,10 +113,10 @@ func (s *Decoded) SerializeTo(b []byte) error {
 			}
 			offset += FlyoverLen
 		} else {
-			if err := hop.SerializeTo(b[offset : offset+path.HopLen]); err != nil {
+			if err := hop.SerializeTo(b[offset : offset+HopLen]); err != nil {
 				return err
 			}
-			offset += path.HopLen
+			offset += HopLen
 		}
 
 	}

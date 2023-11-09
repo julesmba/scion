@@ -8,9 +8,17 @@ import (
 )
 
 const (
-	LineLen      = 4
-	FlyoverLen   = 20
-	HopLines     = 3
+	// LineLen is the number of bytes in a line as considered by CurrHF in the PathMEtaHeader
+	LineLen = 4
+	// Length in bytes of a FlyoverHopField
+	FlyoverLen = 20
+	// HopLen is the size of a HopField in bytes.
+	HopLen = 12
+	// MacOffset is the offset of the MAC field from the beginning of the HopField
+	MacOffset = 6
+	// The number of lines in a hopfield
+	HopLines = 3
+	// The number of lines in a flyoverhopfield
 	FlyoverLines = 5
 )
 

@@ -141,7 +141,7 @@ func (s *Raw) GetHopField(idx int) (FlyoverHopField, error) {
 	maxHopLen := FlyoverLen
 	if idx > s.NumHops-5 {
 		if idx == s.NumHops-3 {
-			maxHopLen = path.HopLen
+			maxHopLen = HopLen
 		} else {
 			return FlyoverHopField{}, serrors.New("Invalid hopfield index", "NumHops", s.NumHops, "index", idx)
 		}
@@ -162,7 +162,7 @@ func (s *Raw) ReplacMac(idx int, mac []byte) error {
 	if idx >= s.NumHops-2 {
 		return serrors.New("HopField index out of bounds", "max", s.NumHops-3, "actual", idx)
 	}
-	offset := s.NumINF*path.InfoLen + MetaLen + idx*LineLen + path.MacOffset
+	offset := s.NumINF*path.InfoLen + MetaLen + idx*LineLen + MacOffset
 	if n := copy(s.Raw[offset:offset+path.MacLen], mac[:path.MacLen]); n != path.MacLen {
 		return serrors.New("copied worng number of bytes for mac replacement", "expected", path.MacLen, "actual", n)
 	}
@@ -179,7 +179,7 @@ func (s *Raw) GetMac(idx int) ([]byte, error) {
 	if idx >= s.NumHops-2 {
 		return nil, serrors.New("HopField index out of bounds", "max", s.NumHops-3, "actual", idx)
 	}
-	offset := s.NumINF*path.InfoLen + MetaLen + idx*LineLen + path.MacOffset
+	offset := s.NumINF*path.InfoLen + MetaLen + idx*LineLen + MacOffset
 	return s.Raw[offset : offset+path.MacLen], nil
 }
 
@@ -211,7 +211,7 @@ func (s *Raw) SetHopField(hop FlyoverHopField, idx int) error {
 		}
 		return hop.SerializeTo(s.Raw[hopOffset : hopOffset+FlyoverLen])
 	}
-	return hop.SerializeTo(s.Raw[hopOffset : hopOffset+path.HopLen])
+	return hop.SerializeTo(s.Raw[hopOffset : hopOffset+HopLen])
 }
 
 // IsFirstHop returns whether the current hop is the first hop on the path.
@@ -277,13 +277,13 @@ func (s *Raw) DoFlyoverXover() error {
 	}
 	// buffer flyover and copy data
 	var t [2 * LineLen]byte
-	copy(t[:], s.Raw[hopOffset+path.HopLen:hopOffset+FlyoverLen])
-	copy(s.Raw[hopOffset+path.HopLen:hopOffset+2*path.HopLen], s.Raw[hopOffset+FlyoverLen:hopOffset+FlyoverLen+path.HopLen])
-	copy(s.Raw[hopOffset+2*path.HopLen:hopOffset+path.HopLen+FlyoverLen], t[:])
+	copy(t[:], s.Raw[hopOffset+HopLen:hopOffset+FlyoverLen])
+	copy(s.Raw[hopOffset+HopLen:hopOffset+2*HopLen], s.Raw[hopOffset+FlyoverLen:hopOffset+FlyoverLen+HopLen])
+	copy(s.Raw[hopOffset+2*HopLen:hopOffset+HopLen+FlyoverLen], t[:])
 
 	// Unset and Set Flyoverbits
 	s.Raw[hopOffset] &= 0x7f
-	s.Raw[hopOffset+path.HopLen] |= 0x80
+	s.Raw[hopOffset+HopLen] |= 0x80
 	// Adatp seglens
 	s.Base.PathMeta.SegLen[s.PathMeta.CurrINF] -= 2
 	s.Base.PathMeta.SegLen[s.PathMeta.CurrINF+1] += 2
@@ -304,16 +304,16 @@ func (s *Raw) ReverseFlyoverXover() error {
 	if s.Raw[hopOffset]&0x80 == 0x00 {
 		return serrors.New("Current hop does not have a Flyover")
 	}
-	if s.Raw[hopOffset-path.HopLen]&0x80 != 0x00 {
+	if s.Raw[hopOffset-HopLen]&0x80 != 0x00 {
 		return serrors.New("Cannot Reverse Flyover Crossover, flyover bit set where previous hop should be")
 	}
-	var t [FlyoverLen - path.HopLen]byte
-	copy(t[:], s.Raw[hopOffset+path.HopLen:hopOffset+FlyoverLen])
-	copy(s.Raw[hopOffset+FlyoverLen-path.HopLen:hopOffset+FlyoverLen], s.Raw[hopOffset:hopOffset+path.HopLen])
-	copy(s.Raw[hopOffset:hopOffset+FlyoverLen-path.HopLen], t[:])
+	var t [FlyoverLen - HopLen]byte
+	copy(t[:], s.Raw[hopOffset+HopLen:hopOffset+FlyoverLen])
+	copy(s.Raw[hopOffset+FlyoverLen-HopLen:hopOffset+FlyoverLen], s.Raw[hopOffset:hopOffset+HopLen])
+	copy(s.Raw[hopOffset:hopOffset+FlyoverLen-HopLen], t[:])
 	// Set and Unset Flyoverbits
-	s.Raw[hopOffset-path.HopLen] |= 0x80
-	s.Raw[hopOffset+FlyoverLen-path.HopLen] &= 0x7f
+	s.Raw[hopOffset-HopLen] |= 0x80
+	s.Raw[hopOffset+FlyoverLen-HopLen] &= 0x7f
 	// Adapt Seglens and CurrHF
 	s.Base.PathMeta.SegLen[s.PathMeta.CurrINF] -= 2
 	s.Base.PathMeta.SegLen[s.PathMeta.CurrINF-1] += 2

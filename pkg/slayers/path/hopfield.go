@@ -28,8 +28,6 @@ const (
 	HopLen = 12
 	// MacLen is the size of the MAC of each HopField.
 	MacLen = 6
-	// MacOffset is the offset of the MAC field from the beginning of the HopField
-	MacOffset = 6
 )
 
 // MaxTTL is the maximum age of a HopField.
