@@ -31,8 +31,6 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 	if err := s.Base.DecodeFromBytes(data); err != nil {
 		return err
 	}
-	// fmt.Printf("s: %v\n", s)
-	// fmt.Print(s.Len())
 	if minLen := s.Len(); len(data) < minLen {
 		return serrors.New("DecodedPath raw too short", "expected", minLen, "actual", len(data))
 	}
@@ -47,7 +45,7 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 	}
 
 	// Allocate maximum number of possible hopfields based on length
-	s.HopFields = make([]FlyoverHopField, s.NumLines/3)
+	s.HopFields = make([]FlyoverHopField, s.NumLines/HopLines)
 	i, j := 0, 0
 	// If last hop is not a flyover hop, decode it with only 12 bytes slice
 	for ; j < s.NumLines-HopLines; i++ {
@@ -130,7 +128,7 @@ func (s *Decoded) Reverse() (path.Path, error) {
 		return nil, serrors.New("empty decoded path is invalid and cannot be reversed")
 	}
 
-	if err := s.RemoveFlyovers(); err != nil {
+	if err := s.removeFlyovers(); err != nil {
 		return nil, err
 	}
 	// Reverse order of InfoFields and SegLens
@@ -149,14 +147,15 @@ func (s *Decoded) Reverse() (path.Path, error) {
 	}
 	// Update CurrINF and CurrHF and SegLens
 	s.PathMeta.CurrINF = uint8(s.NumINF) - s.PathMeta.CurrINF - 1
-	s.PathMeta.CurrHF = uint8(s.NumLines) - s.PathMeta.CurrHF - 3
+	s.PathMeta.CurrHF = uint8(s.NumLines) - s.PathMeta.CurrHF - HopLines
 
 	return s, nil
 }
 
 // RemoveFlyovers removes all reservations from a decoded path
 // Corrects SegLen and CurrHF accordingly
-func (s *Decoded) RemoveFlyovers() error {
+// Does not affect MACs
+func (s *Decoded) removeFlyovers() error {
 	var idxInf uint8 = 0
 	var offset uint8 = 0
 	var segCount uint8 = 0
@@ -174,7 +173,7 @@ func (s *Decoded) RemoveFlyovers() error {
 			s.Base.NumLines -= 2
 			s.PathMeta.SegLen[idxInf] -= 2
 		}
-		segCount += 3
+		segCount += HopLines
 		if s.PathMeta.SegLen[idxInf] == segCount {
 			segCount = 0
 			idxInf += 1
