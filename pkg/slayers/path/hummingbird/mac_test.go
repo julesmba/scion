@@ -54,6 +54,33 @@ func TestDeriveAuthKey(t *testing.T) {
 	require.Equal(t, expected, key)
 }
 
+// Golden Data test used for cross verification with other implementations
+func TestDeriveAuthKeyGoldenData(t *testing.T) {
+	sv := []byte{0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7}
+	var resId uint32 = 0x40
+	var bw uint16 = 0x0203
+	buffer := make([]byte, 16)
+	var in uint16 = 2
+	var eg uint16 = 5
+	var start uint32 = 0x0030001
+	var duration uint16 = 0x0203
+
+	// Compute expected result with library CBC
+	expected := [16]byte{0x7e, 0x61, 0x4, 0x91, 0x30, 0x6b, 0x95, 0xec, 0xb5, 0x75, 0xc6, 0xe9, 0x4c, 0x5a, 0x89, 0x84}
+
+	// Run DeriveAuthKey Function
+	block, err := aes.NewCipher(sv)
+	if err != nil {
+		require.Fail(t, err.Error())
+	}
+
+	key := hummingbird.DeriveAuthKey(block, resId, bw, in, eg, start, duration, buffer)
+	require.Equal(t, expected[:], key)
+
+	key = hummingbird.DeriveAuthKey(block, resId, bw, in, eg, start, duration, buffer)
+	require.Equal(t, expected[:], key)
+}
+
 func BenchmarkDeriveAuthKey(b *testing.B) {
 	sv := []byte{0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7}
 
@@ -110,7 +137,7 @@ func BenchmarkDeriveAuthKeyManually(b *testing.B) {
 
 // We use CBC-MAC using aes for the flyover mac. As we have only one block of input, this leads to the mac consisting of a single aes call.
 func TestFlyoverMac(t *testing.T) {
-	ak := []byte{142, 19, 145, 119, 76, 2, 228, 18, 134, 111, 116, 45, 200, 172, 113, 219}
+	ak := []byte{0x7e, 0x61, 0x4, 0x91, 0x30, 0x6b, 0x95, 0xec, 0xb5, 0x75, 0xc6, 0xe9, 0x4c, 0x5a, 0x89, 0x84}
 	var dstIA addr.IA = 326
 	var pktlen uint16 = 23
 	var resStartTs uint16 = 1234
@@ -136,8 +163,27 @@ func TestFlyoverMac(t *testing.T) {
 	require.Equal(t, expected, mac)
 }
 
+// Golden data test used for cross verification with other implementations
+func TestFlyoverMacGoldenData(t *testing.T) {
+	ak := []byte{0x7e, 0x61, 0x4, 0x91, 0x30, 0x6b, 0x95, 0xec, 0xb5, 0x75, 0xc6, 0xe9, 0x4c, 0x5a, 0x89, 0x84}
+	var dstIA addr.IA = 326
+	var pktlen uint16 = 23
+	var resStartTs uint16 = 1234
+	var highResTs uint32 = 4321
+	buffer := make([]byte, 32)
+	xkbuffer := make([]uint32, 44)
+
+	// Compute expected output based on library cmac implementation
+	expected := [16]byte{0xbe, 0xad, 0xcf, 0x70, 0xf, 0x75, 0xdf, 0x8, 0xde, 0x91, 0xe9, 0xda, 0xf5, 0xcb, 0x9f, 0x74}
+
+	mac := hummingbird.FullFlyoverMac(ak, dstIA, pktlen, resStartTs, highResTs, buffer, xkbuffer)
+	require.Equal(t, expected[:], mac)
+	mac = hummingbird.FullFlyoverMac(ak, dstIA, pktlen, resStartTs, highResTs, buffer, xkbuffer)
+	require.Equal(t, expected[:], mac)
+}
+
 func BenchmarkFlyoverMac(b *testing.B) {
-	ak := []byte{142, 19, 145, 119, 76, 2, 228, 18, 134, 111, 116, 45, 200, 172, 113, 219}
+	ak := []byte{0x7e, 0x61, 0x4, 0x91, 0x30, 0x6b, 0x95, 0xec, 0xb5, 0x75, 0xc6, 0xe9, 0x4c, 0x5a, 0x89, 0x84}
 	var dstIA addr.IA = 326
 	var pktlen uint16 = 23
 	var resStartTs uint16 = 1234
