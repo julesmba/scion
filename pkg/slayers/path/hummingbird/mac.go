@@ -34,9 +34,8 @@ var ZeroBlock [aes.BlockSize]byte
 func DeriveAuthKey(block cipher.Block, resId uint32, bw, in, eg uint16,
 	startTime uint32, resDuration uint16, buffer []byte) []byte {
 
-	if len(buffer) < AkBufferSize {
-		buffer = make([]byte, AkBufferSize)
-	}
+	_ = buffer[AkBufferSize-1]
+
 	//prepare input
 	binary.BigEndian.PutUint16(buffer[0:2], in)
 	binary.BigEndian.PutUint16(buffer[2:4], eg)
@@ -54,12 +53,9 @@ func DeriveAuthKey(block cipher.Block, resId uint32, bw, in, eg uint16,
 // Needs a xkbuffer of 44 uint32s to store the expanded keys for aes
 func FullFlyoverMac(ak []byte, dstIA addr.IA, pktlen uint16, resStartTime uint16,
 	highResTime uint32, buffer []byte, xkbuffer []uint32) []byte {
-	if len(buffer) < FlyoverMacBufferSize {
-		buffer = make([]byte, FlyoverMacBufferSize)
-	}
-	if len(xkbuffer) < XkBufferSize {
-		xkbuffer = make([]uint32, XkBufferSize)
-	}
+
+	_ = buffer[FlyoverMacBufferSize-1]
+	_ = xkbuffer[XkBufferSize-1]
 
 	binary.BigEndian.PutUint64(buffer[0:8], uint64(dstIA))
 	binary.BigEndian.PutUint16(buffer[8:10], pktlen)
