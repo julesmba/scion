@@ -1,3 +1,6 @@
+// This file is mostly a copy of the file of the same name in the crypto/aes go package
+// The key expansion for the decryption keys has been removed in this file
+
 // Copyright 2016 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
