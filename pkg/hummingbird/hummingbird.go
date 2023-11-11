@@ -130,8 +130,8 @@ type HummingbirdClient struct {
 	// counter for duplicate detection
 	counter uint32
 	// buffers for computing Vk
-	byteBuffer [16]byte
-	xkbuffer   [44]uint32
+	byteBuffer [hummingbird.FlyoverMacBufferSize]byte
+	xkbuffer   [hummingbird.XkBufferSize]uint32
 }
 
 func (c *HummingbirdClient) parseIAs(ifs []snet.PathInterface) error {
@@ -197,44 +197,25 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) error {
 	log.Debug("path ASes", "ASes", c.ases)
 	// prepare reservations data structure
 	c.reservations = make([]Reservation, len(c.dec.HopFields))
-	return nil
-}
-
-func (c *HummingbirdClient) RequestReservationsAllHops(
-	bw uint16, start uint32, duration uint16) error {
-	return c.RequestReservationForASes(c.ases, bw, start, duration)
-}
-
-// Returns a copy of all ASes on the current path in order
-func (c *HummingbirdClient) GetPathASes() []addr.IA {
-	ascopy := make([]addr.IA, len(c.ases))
-	copy(ascopy, c.ases)
-	return ascopy
-}
-
-// Requests new reservations for this path for the listed ASes
-// Expects them to be in order without duplicates
-func (c *HummingbirdClient) RequestReservationForASes(
-	asin []addr.IA, bw uint16, start uint32, duration uint16) error {
-	j := 0
-	for i := range c.dec.HopFields {
-		if j >= len(asin) || asin[j] != c.ases[i] {
-			continue
-		}
-
+	// Initialize expected AS, ingress and egress for each reservation
+	// keep all fields 0 for second crossover hop where no reservation in allowed
+	for i, hop := range c.dec.HopFields {
 		var infIdx int
-		var firstHopAfterXover, lastHopBeforeXover bool
+		var xover bool
 		if i < int(c.dec.FirstHopPerSeg[0]) {
 			infIdx = 0
 			if !c.dec.InfoFields[0].Peer {
-				lastHopBeforeXover = (i == int(c.dec.FirstHopPerSeg[0])-1) &&
+				xover = (i == int(c.dec.FirstHopPerSeg[0])-1) &&
 					i < len(c.dec.HopFields)-1
 			}
 		} else if i < int(c.dec.FirstHopPerSeg[1]) {
 			infIdx = 1
 			if !c.dec.InfoFields[1].Peer {
-				firstHopAfterXover = i == int(c.dec.FirstHopPerSeg[0])
-				lastHopBeforeXover = i == int(c.dec.FirstHopPerSeg[1])-1 &&
+				if i == int(c.dec.FirstHopPerSeg[0]) {
+					// First hop after Crossover, nothing to be done
+					continue
+				}
+				xover = i == int(c.dec.FirstHopPerSeg[1])-1 &&
 					i < len(c.dec.HopFields)-1
 			}
 		} else {
@@ -242,52 +223,96 @@ func (c *HummingbirdClient) RequestReservationForASes(
 			if c.dec.InfoFields[2].Peer {
 				return serrors.New("Invalid path, cannot have 3 segments on peering path")
 			}
-			firstHopAfterXover = i == int(c.dec.FirstHopPerSeg[1]) && i < len(c.dec.HopFields)-1
+			if i == int(c.dec.FirstHopPerSeg[1]) && i < len(c.dec.HopFields)-1 {
+				// First hop after Crossover, nothing to be done
+				continue
+			}
 		}
-		// Do not add a reservation to second hop after crossover
-		if firstHopAfterXover {
-			continue
-		}
-
+		// set AS
 		c.reservations[i].AS = c.ases[i]
-		c.reservations[i].Bw = bw
-		c.reservations[i].StartTime = start
-		c.reservations[i].Duration = duration
-		// Set Ingress and Egress interfaces of reservation
-		// If crossover, need to take next/previous hop into account
-		if lastHopBeforeXover {
+		// Set ingress/egress
+		if xover {
 			if c.dec.InfoFields[infIdx].ConsDir {
-				c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsIngress
+				c.reservations[i].Ingress = hop.HopField.ConsIngress
 			} else {
-				c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsEgress
+				c.reservations[i].Ingress = hop.HopField.ConsEgress
 			}
 			if c.dec.InfoFields[infIdx+1].ConsDir {
 				c.reservations[i].Egress = c.dec.HopFields[i+1].HopField.ConsEgress
 			} else {
 				c.reservations[i].Egress = c.dec.HopFields[i+1].HopField.ConsIngress
 			}
-		} else if c.dec.InfoFields[infIdx].ConsDir {
-			c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsIngress
-			c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsEgress
 		} else {
-			c.reservations[i].Ingress = c.dec.HopFields[i].HopField.ConsEgress
-			c.reservations[i].Egress = c.dec.HopFields[i].HopField.ConsIngress
+			if c.dec.InfoFields[infIdx].ConsDir {
+				c.reservations[i].Ingress = hop.HopField.ConsIngress
+				c.reservations[i].Egress = hop.HopField.ConsEgress
+			} else {
+				c.reservations[i].Ingress = hop.HopField.ConsEgress
+				c.reservations[i].Egress = hop.HopField.ConsIngress
+			}
 		}
+	}
+	return nil
+}
+
+// Returns a copy of all ASes on the current path in order without duplicates
+func (c *HummingbirdClient) GetPathASes() []addr.IA {
+	ascopy := make([]addr.IA, len(c.ases))
+	j := 0
+	for i := range c.ases {
+		if i == 0 || c.ases[i] != c.ases[i-1] {
+			ascopy[j] = c.ases[i]
+			j++
+		}
+	}
+	return ascopy[:j]
+}
+
+func (c *HummingbirdClient) RequestReservationsAllHops(
+	bw uint16, start uint32, duration uint16) error {
+	ascopy := make([]addr.IA, len(c.ases))
+	j := 0
+	for i := range c.ases {
+		if i == 0 || c.ases[i] != c.ases[i-1] {
+			ascopy[j] = c.ases[i]
+			j++
+		}
+	}
+	return c.RequestReservationForASes(ascopy[:j], bw, start, duration)
+}
+
+// Requests new reservations for this path for the listed ASes
+// Expects them to be in order without duplicates
+func (c *HummingbirdClient) RequestReservationForASes(
+	asin []addr.IA, bw uint16, start uint32, duration uint16) error {
+	log.Debug("Requesting reservations for", "AS", asin)
+	j := 0
+	for i := range c.dec.HopFields {
+		if j >= len(asin) {
+			break
+		}
+		if asin[j] != c.ases[i] {
+			continue
+		}
+
+		if (i == int(c.dec.FirstHopPerSeg[0]) && !c.dec.InfoFields[1].Peer) ||
+			(i == int(c.dec.FirstHopPerSeg[1])) {
+			// Ignore the second hops after crossover
+			continue
+		}
+
+		// TODO: request reservations
+		// Current implementation cheats by writing data into c.reservations instead
+		//c.reservations[i].AS = c.ases[i]
+		c.reservations[i].Bw = bw
+		c.reservations[i].StartTime = start
+		c.reservations[i].Duration = duration
 
 		var err error
 		c.reservations[i], err = cheat_auth_key(&c.reservations[i])
 		if err != nil {
 			return err
 		}
-		// set flyover
-		c.dec.HopFields[i].Flyover = true
-		c.dec.NumLines += 2
-		c.dec.PathMeta.SegLen[infIdx] += 2
-		// set other fields
-		c.dec.HopFields[i].Bw = c.reservations[i].Bw
-		c.dec.HopFields[i].Duration = c.reservations[i].Duration
-		c.dec.HopFields[i].ResID = c.reservations[i].ResID
-
 		j++
 	}
 
@@ -299,15 +324,67 @@ func GetAllReservations() ([]Reservation, error) {
 	return nil, serrors.New("Not Implemented")
 }
 
-// Returns all reservations in the database that are applicable to the current path
-func (c *HummingbirdClient) GetAllReservations() ([]Reservation, error) {
+// Returns all reservations in the database that can be used for the current path
+func (c *HummingbirdClient) GetAvailableReservations() ([]Reservation, error) {
 	// Return all reservations in the data base
-	return nil, serrors.New("Not Implemented")
+	//TODO: return all reservations in the db that fit the path (AS, ingress egress)
+
+	// Unti we have access to the daemon db, we cheat and return  the data written into c.reservations in request
+	res := make([]Reservation, len(c.reservations))
+	j := 0
+	for _, r := range c.reservations {
+		if r.Bw != 0 {
+			res[j] = r
+			j++
+		}
+	}
+	log.Debug("getting available reservations", "reservations", res)
+	return res[:j], nil
 }
 
 // Adds the listed reservations to the path
+// Expects them to be in order
 func (c *HummingbirdClient) ApplyReservations(res []Reservation) error {
-	return serrors.New("Not Implemented")
+	log.Debug("Applying reservations", "reservations", res)
+	for i, j := 0, 0; i < len(c.reservations) && j < len(res); i++ {
+		if res[j].AS == c.reservations[i].AS {
+			if res[j].Ingress == c.reservations[i].Ingress && res[j].Egress == c.reservations[i].Egress {
+				//TODO: handle case of multiple reservations for one hop (different validiy windows)
+				c.reservations[i] = res[j]
+				c.dec.HopFields[i].Flyover = true
+				c.dec.NumLines += 2
+				// increment corresponding segLen
+				switch true {
+				case i < int(c.dec.FirstHopPerSeg[0]):
+					c.dec.PathMeta.SegLen[0] += 2
+				case i < int(c.dec.FirstHopPerSeg[1]):
+					c.dec.PathMeta.SegLen[1] += 2
+				default:
+					c.dec.PathMeta.SegLen[2] += 2
+				}
+				// Set other fields
+				c.dec.HopFields[i].Bw = res[j].Bw
+				c.dec.HopFields[i].Duration = res[j].Duration
+				c.dec.HopFields[i].ResID = res[j].ResID
+			}
+			//TODO: else inform user at the end that this reservations does not fit he path
+
+			j++
+		}
+	}
+	return nil
+}
+
+// Checks whether any current reservation has arrived at expiration
+// If yes, disable reservation
+// TODO: add mechanism to automatically replace it
+func (c *HummingbirdClient) checkExpiry() {
+	now := uint32(time.Now().Unix())
+	for i := range c.reservations {
+		if c.reservations[i].EndTime < now {
+			c.dec.HopFields[i].Flyover = false
+		}
+	}
 }
 
 // Sets pathmeta timestamps and increments duplicate detection counter.

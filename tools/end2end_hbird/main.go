@@ -323,7 +323,15 @@ func (c *client) attemptRequest(n int) bool {
 				logger.Error("Error requesting reservations", "err", err)
 				return false
 			}
-			// TODO: add step to receive reservation???
+
+			res, err := hbirdClient.GetAvailableReservations()
+			if err != nil {
+				logger.Error("Error getting available reservations", "err", err)
+			}
+
+			if err := hbirdClient.ApplyReservations(res); err != nil {
+				logger.Error("Error applying reservations", "err", err)
+			}
 
 			path, err = hbirdClient.FinalizePath(path, pingPayloadLen)
 			if err != nil {
@@ -349,6 +357,16 @@ func (c *client) attemptRequest(n int) bool {
 				logger.Error("Error requesting reservations", "err", err)
 				return false
 			}
+
+			res, err := hbirdClient.GetAvailableReservations()
+			if err != nil {
+				logger.Error("Error getting available reservations", "err", err)
+			}
+
+			if err := hbirdClient.ApplyReservations(res); err != nil {
+				logger.Error("Error applying reservations", "err", err)
+			}
+
 			path, err = hbirdClient.FinalizePath(path, pingPayloadLen)
 			if err != nil {
 				logger.Error("Error assembling hummingbird path", "err", err)
