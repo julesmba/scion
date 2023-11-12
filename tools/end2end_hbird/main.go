@@ -314,19 +314,15 @@ func (c *client) attemptRequest(n int) bool {
 		} else if !partial {
 			// full path with reservations
 			hbirdClient := hummingbird.HummingbirdClient{}
-			if err := hbirdClient.PrepareHbirdPath(path); err != nil {
+			if _, err := hbirdClient.PrepareHbirdPath(path); err != nil {
 				logger.Error("Error converting path to Hummingbird", "err", err)
 				return false
 			}
 			secs := uint32(time.Now().Unix())
-			if err := hbirdClient.RequestReservationsAllHops(16, secs, 120); err != nil {
+			res, err := hbirdClient.RequestReservationsAllHops(16, secs, 120)
+			if err != nil {
 				logger.Error("Error requesting reservations", "err", err)
 				return false
-			}
-
-			res, err := hbirdClient.GetAvailableReservations()
-			if err != nil {
-				logger.Error("Error getting available reservations", "err", err)
 			}
 
 			if err := hbirdClient.ApplyReservations(res); err != nil {
@@ -341,7 +337,7 @@ func (c *client) attemptRequest(n int) bool {
 		} else {
 			//partial reservations, alternating resrved and not reserved
 			hbirdClient := hummingbird.HummingbirdClient{}
-			if err := hbirdClient.PrepareHbirdPath(path); err != nil {
+			if _, err := hbirdClient.PrepareHbirdPath(path); err != nil {
 				logger.Error("Error converting path to Hummingbird", "err", err)
 				return false
 			}
@@ -353,14 +349,10 @@ func (c *client) attemptRequest(n int) bool {
 			}
 			ases = ases[:n]
 			secs := uint32(time.Now().Unix())
-			if err := hbirdClient.RequestReservationForASes(ases, 16, secs, 120); err != nil {
+			res, err := hummingbird.RequestReservationForASes(ases, 16, secs, 120)
+			if err != nil {
 				logger.Error("Error requesting reservations", "err", err)
 				return false
-			}
-
-			res, err := hbirdClient.GetAvailableReservations()
-			if err != nil {
-				logger.Error("Error getting available reservations", "err", err)
 			}
 
 			if err := hbirdClient.ApplyReservations(res); err != nil {
