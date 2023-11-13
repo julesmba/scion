@@ -58,7 +58,9 @@ type hbirdHop struct {
 	ingress uint16
 	// The egress used by packets traversing this hop
 	egress uint16
-	// The reservations that can be used for this hop
+	// The reservations that can be used for this hop.
+	// The reservation at index 0 is the one used to build the path
+	// MUST be non-empty if hopfield.Flyiver == true
 	reservations []Reservation
 	// The original scion mac of the corresponding hopfield
 	scionMac [6]byte
@@ -367,11 +369,112 @@ func (c *HummingbirdClient) ApplyReservations(res []Reservation) error {
 	return nil
 }
 
-// Checks whether any current reservation has arrived at expiration
-// If yes, disable reservation
-// TODO: add mechanism to automatically replace it
-func (c *HummingbirdClient) checkExpiry() {
+// Returns all the reservations that the client may currently use
+// If multiple reservations per hop are present, the one currently used is the first appearing in the returned array
+func (c *HummingbirdClient) GetUsedReservations() []Reservation {
+	res := make([]Reservation, 0, len(c.hops))
+	for _, h := range c.hops {
+		res = append(res, h.reservations...)
+	}
+	return res
+}
 
+// Removes the reservation with the given resID from a hop
+func (c *HummingbirdClient) removeReservation(hopIdx int, resID uint32) {
+	h := &c.hops[hopIdx]
+	for i, r := range h.reservations {
+		if r.ResID == resID {
+			if i == 0 {
+				if len(h.reservations) == 1 {
+					h.hopfield.Flyover = false
+					c.dec.NumLines -= 2
+					c.dec.PathMeta.SegLen[c.hops[hopIdx].infIdx] -= 2
+					h.reservations = []Reservation{}
+				} else {
+					copy(h.reservations[:], h.reservations[1:])
+					h.reservations = h.reservations[:len(h.reservations)-1]
+					h.hopfield.Bw = h.reservations[0].Bw
+					h.hopfield.ResID = h.reservations[0].ResID
+					h.hopfield.Duration = h.reservations[0].Duration
+				}
+			} else {
+				if i < len(h.reservations)-1 {
+					copy(h.reservations[i:], h.reservations[i+1:])
+				}
+				h.reservations = h.reservations[:len(h.reservations)-1]
+			}
+			break
+		}
+	}
+}
+
+// Removes res from the reservations the client is allowed to use
+// Reservations are identified based on their AS and ResID
+// Does NOT check for validity of remaining reservations
+func (c *HummingbirdClient) RemoveReservations(res []Reservation) error {
+	for _, r := range res {
+		for i, h := range c.hops {
+			if r.AS == h.as {
+				c.removeReservation(i, r.ResID)
+				break
+			}
+		}
+	}
+	return nil
+}
+
+// Checks whether any current reservation that has expired or will expire in t seconds
+// If yes, remove reservation from list of used reservations
+func (c *HummingbirdClient) CheckExpiry(t uint32) {
+	now := uint32(time.Now().Unix())
+	for i := range c.hops {
+
+		// Remove expired reservations
+		for j := 0; j < len(c.hops[i].reservations); {
+			if c.hops[i].reservations[j].StartTime+uint32(c.hops[i].reservations[j].Duration) < (now + t) {
+				copy(c.hops[i].reservations[j:], c.hops[i].reservations[j+1:])
+				c.hops[i].reservations = c.hops[i].reservations[:len(c.hops[i].reservations)-1]
+			}
+		}
+
+		if len(c.hops[i].reservations) == 0 {
+			if c.hops[i].hopfield.Flyover {
+				c.hops[i].hopfield.Flyover = false
+				c.dec.NumLines -= 2
+				c.dec.PathMeta.SegLen[c.hops[i].infIdx] -= 2
+			}
+			continue
+		}
+		// If there's any currently valid reservation, put it to the front
+		if !(c.hops[i].reservations[0].StartTime <= now) {
+			for j := 1; j < len(c.hops[i].reservations); j++ {
+				if c.hops[i].reservations[j].StartTime <= now {
+					temp := c.hops[i].reservations[0]
+					c.hops[i].reservations[0] = c.hops[i].reservations[j]
+					c.hops[i].reservations[j] = temp
+					break
+				}
+			}
+		}
+
+		// Check whether reservation at the front is currently valid
+		if c.hops[i].reservations[0].StartTime <= now {
+			if !c.hops[i].hopfield.Flyover {
+				c.hops[i].hopfield.Flyover = true
+				c.dec.NumLines += 2
+				c.dec.PathMeta.SegLen[c.hops[i].infIdx] += 2
+			}
+			c.hops[i].hopfield.Bw = c.hops[i].reservations[0].Bw
+			c.hops[i].hopfield.Duration = c.hops[i].reservations[0].Duration
+			c.hops[i].hopfield.ResID = c.hops[i].reservations[0].ResID
+		} else {
+			if c.hops[i].hopfield.Flyover {
+				c.hops[i].hopfield.Flyover = false
+				c.dec.NumLines -= 2
+				c.dec.PathMeta.SegLen[c.hops[i].infIdx] -= 2
+			}
+		}
+	}
 }
 
 // Sets pathmeta timestamps and increments duplicate detection counter.
