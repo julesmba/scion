@@ -2,12 +2,17 @@ load("//tools/lint:go.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
-    srcs = ["hummingbird.go"],
+    srcs = [
+        "flyover.go",
+        "hummingbird.go",
+        "resevation.go",
+    ],
     importpath = "github.com/scionproto/scion/pkg/hummingbird",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/addr:go_default_library",
         "//pkg/log:go_default_library",
+        "//pkg/private/common:go_default_library",
         "//pkg/private/serrors:go_default_library",
         "//pkg/slayers/path/hummingbird:go_default_library",
         "//pkg/slayers/path/scion:go_default_library",

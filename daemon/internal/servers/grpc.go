@@ -61,6 +61,8 @@ type DaemonServer struct {
 	ASInspector trust.Inspector
 	DRKeyClient *drkey_daemon.ClientEngine
 
+	HummingbirdFetcher HummingbirdFetcher
+
 	Metrics Metrics
 
 	foregroundPathDedupe singleflight.Group

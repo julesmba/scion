@@ -115,6 +115,21 @@ func (mr *MockConnectorMockRecorder) DRKeyGetHostHostKey(arg0, arg1 interface{})
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DRKeyGetHostHostKey", reflect.TypeOf((*MockConnector)(nil).DRKeyGetHostHostKey), arg0, arg1)
 }
 
+// GetReservations mocks base method.
+func (m *MockConnector) GetReservations(arg0 context.Context, arg1, arg2 addr.IA) ([]snet.Path, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetReservations", arg0, arg1, arg2)
+	ret0, _ := ret[0].([]snet.Path)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetReservations indicates an expected call of GetReservations.
+func (mr *MockConnectorMockRecorder) GetReservations(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReservations", reflect.TypeOf((*MockConnector)(nil).GetReservations), arg0, arg1, arg2)
+}
+
 // IFInfo mocks base method.
 func (m *MockConnector) IFInfo(arg0 context.Context, arg1 []common.IFIDType) (map[common.IFIDType]*net.UDPAddr, error) {
 	m.ctrl.T.Helper()

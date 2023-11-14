@@ -87,6 +87,7 @@ type Connector interface {
 	DRKeyGetHostASKey(ctx context.Context, meta drkey.HostASMeta) (drkey.HostASKey, error)
 	// DRKeyGetHostHostKey requests a Host-Host Key from the daemon.
 	DRKeyGetHostHostKey(ctx context.Context, meta drkey.HostHostMeta) (drkey.HostHostKey, error)
+	GetReservations(ctx context.Context, src, dst addr.IA) ([]snet.Path, error)
 	// Close shuts down the connection to the daemon.
 	Close() error
 }
