@@ -69,6 +69,46 @@ var testFlyoverFields = []hummingbird.FlyoverHopField{
 	},
 }
 
+var otherTestFlyoverFields = []hummingbird.FlyoverHopField{
+	{
+		HopField: path.HopField{
+			ExpTime:     63,
+			ConsIngress: 1,
+			ConsEgress:  0,
+			Mac:         [path.MacLen]byte{1, 2, 3, 4, 5, 6},
+		},
+		Flyover:      true,
+		ResID:        0,
+		Bw:           4,
+		ResStartTime: 2,
+		Duration:     1,
+	},
+	{
+		HopField: path.HopField{
+			ExpTime:     63,
+			ConsIngress: 3,
+			ConsEgress:  2,
+			Mac:         [path.MacLen]byte{1, 2, 3, 4, 5, 6},
+		},
+	},
+	{
+		HopField: path.HopField{
+			ExpTime:     63,
+			ConsIngress: 0,
+			ConsEgress:  2,
+			Mac:         [path.MacLen]byte{1, 2, 3, 4, 5, 6},
+		},
+	},
+	{
+		HopField: path.HopField{
+			ExpTime:     63,
+			ConsIngress: 1,
+			ConsEgress:  0,
+			Mac:         [path.MacLen]byte{1, 2, 3, 4, 5, 6},
+		},
+	},
+}
+
 var decodedHbirdTestPath = &hummingbird.Decoded{
 	Base: hummingbird.Base{
 		PathMeta: hummingbird.MetaHdr{
@@ -86,6 +126,23 @@ var decodedHbirdTestPath = &hummingbird.Decoded{
 	FirstHopPerSeg: [2]uint8{2, 4},
 }
 
+var otherDecodedHbirdTestPath = &hummingbird.Decoded{
+	Base: hummingbird.Base{
+		PathMeta: hummingbird.MetaHdr{
+			CurrINF:   0,
+			CurrHF:    0,
+			SegLen:    [3]uint8{8, 6, 0},
+			BaseTS:    808,
+			HighResTS: 1234,
+		},
+		NumINF:   2,
+		NumLines: 14,
+	},
+	InfoFields:     testInfoFields,
+	HopFields:      otherTestFlyoverFields,
+	FirstHopPerSeg: [2]uint8{2, 4},
+}
+
 var emptyDecodedTestPath = &hummingbird.Decoded{
 	Base:       hummingbird.Base{},
 	InfoFields: []path.InfoField{},
@@ -98,6 +155,13 @@ var rawHbirdPath = []byte("\x00\x02\x04\x00\x00\x00\x03\x28\x00\x00\x04\xd2" +
 	"\x00\x3f\x00\x03\x00\x02\x01\x02\x03\x04\x05\x06" +
 	"\x00\x3f\x00\x00\x00\x02\x01\x02\x03\x04\x05\x06" +
 	"\x80\x3f\x00\x01\x00\x00\x01\x02\x03\x04\x05\x06\x00\x00\x00\x04\x00\x00\x00\x01")
+
+var otherRawHbirdPath = []byte("\x00\x02\x03\x00\x00\x00\x03\x28\x00\x00\x04\xd2" +
+	"\x00\x00\x01\x11\x00\x00\x01\x00\x01\x00\x02\x22\x00\x00\x01\x00" +
+	"\x80\x3f\x00\x01\x00\x00\x01\x02\x03\x04\x05\x06\x00\x00\x00\x04\x00\x02\x00\x01" +
+	"\x00\x3f\x00\x03\x00\x02\x01\x02\x03\x04\x05\x06" +
+	"\x00\x3f\x00\x00\x00\x02\x01\x02\x03\x04\x05\x06" +
+	"\x00\x3f\x00\x01\x00\x00\x01\x02\x03\x04\x05\x06")
 
 type hbirdPathCase struct {
 	infos []bool
@@ -176,6 +240,26 @@ func TestDecodedSerializeDecodeHbird(t *testing.T) {
 	s := &hummingbird.Decoded{}
 	assert.NoError(t, s.DecodeFromBytes(b))
 	assert.Equal(t, decodedHbirdTestPath, s)
+}
+
+func TestOtherDecodedSerializeHbird(t *testing.T) {
+	b := make([]byte, otherDecodedHbirdTestPath.Len())
+	assert.NoError(t, otherDecodedHbirdTestPath.SerializeTo(b))
+	assert.Equal(t, otherRawHbirdPath, b)
+}
+
+func TestOtherDecodedDecodeFromBytesHbird(t *testing.T) {
+	s := &hummingbird.Decoded{}
+	assert.NoError(t, s.DecodeFromBytes(otherRawHbirdPath))
+	assert.Equal(t, otherDecodedHbirdTestPath, s)
+}
+
+func TestOtherDecodedSerializeDecodeHbird(t *testing.T) {
+	b := make([]byte, otherDecodedHbirdTestPath.Len())
+	assert.NoError(t, otherDecodedHbirdTestPath.SerializeTo(b))
+	s := &hummingbird.Decoded{}
+	assert.NoError(t, s.DecodeFromBytes(b))
+	assert.Equal(t, otherDecodedHbirdTestPath, s)
 }
 
 func TestDecodedReverseHbird(t *testing.T) {
