@@ -102,7 +102,7 @@ func AddReservation(res Reservation) error {
 
 // Converts a SCiON path to a Hummingbird path without adding any reservations
 // Relaces the SCiON dataplane path by a Hummingbird path
-func ConvertToHbirdPath(p snet.Path) (snet.Path, error) {
+func ConvertToHbirdPath(p snet.Path, timeStamp time.Time) (snet.Path, error) {
 	if p == nil {
 		return nil, serrors.New("Cannot convert nil path")
 	}
@@ -114,6 +114,11 @@ func ConvertToHbirdPath(p snet.Path) (snet.Path, error) {
 	if err != nil {
 		return nil, err
 	}
+	// set metaheader timestamps
+	secs := uint32(timeStamp.Unix())
+	millis := uint32(timeStamp.Nanosecond()/1000) << 22
+	dec.PathMeta.BaseTS = secs
+	dec.PathMeta.HighResTS = millis
 
 	hbird, err := snetpath.NewHbirdFromDecoded(&dec)
 	if err != nil {
@@ -349,16 +354,15 @@ func (c *HummingbirdClient) ApplyReservations(res []Reservation) error {
 		for j, h := range c.hops {
 			if r.AS == h.as {
 				if r.Ingress == h.ingress && r.Egress == h.egress {
-					// TODO: If there are already reservations present, order by validity/bandwidth?
 					c.hops[j].reservations = append(c.hops[j].reservations, r)
-
-					// TODO: Only modify flyoverhopfield if new reservation becomes primary reservation
-					c.hops[j].hopfield.Flyover = true
-					c.dec.NumLines += 2
-					c.dec.PathMeta.SegLen[h.infIdx] += 2
-					c.hops[j].hopfield.Bw = r.Bw
-					c.hops[j].hopfield.Duration = r.Duration
-					c.hops[j].hopfield.ResID = r.ResID
+					if len(c.hops[j].reservations) == 1 {
+						c.hops[j].hopfield.Flyover = true
+						c.dec.NumLines += 2
+						c.dec.PathMeta.SegLen[h.infIdx] += 2
+						c.hops[j].hopfield.Bw = r.Bw
+						c.hops[j].hopfield.Duration = r.Duration
+						c.hops[j].hopfield.ResID = r.ResID
+					}
 				} else {
 					// TODO: inform caller that this reservation cannot be set on this path
 					break
@@ -434,6 +438,8 @@ func (c *HummingbirdClient) CheckExpiry(t uint32) {
 			if c.hops[i].reservations[j].StartTime+uint32(c.hops[i].reservations[j].Duration) < (now + t) {
 				copy(c.hops[i].reservations[j:], c.hops[i].reservations[j+1:])
 				c.hops[i].reservations = c.hops[i].reservations[:len(c.hops[i].reservations)-1]
+			} else {
+				j++
 			}
 		}
 
@@ -479,17 +485,16 @@ func (c *HummingbirdClient) CheckExpiry(t uint32) {
 
 // Sets pathmeta timestamps and increments duplicate detection counter.
 // Updates MACs of all flyoverfields
-// replaces the dataplane of the inut snet.path with the finished hummingbird path
-func (c *HummingbirdClient) FinalizePath(p snet.Path, pktLen uint16) (snet.Path, error) {
+// replaces the dataplane of the input snet.path with the finished hummingbird path
+func (c *HummingbirdClient) FinalizePath(p snet.Path, pktLen uint16, timeStamp time.Time) (snet.Path, error) {
 	if p == nil {
 		return nil, serrors.New("snet path is nil")
 	}
 	var dphb snetpath.Hummingbird
 
 	// Update timestamps
-	now := time.Now()
-	secs := uint32(now.Unix())
-	millis := uint32(now.Nanosecond()/1000) << 22
+	secs := uint32(timeStamp.Unix())
+	millis := uint32(timeStamp.Nanosecond()/1000) << 22
 	millis |= c.counter
 	c.dec.Base.PathMeta.BaseTS = secs
 	c.dec.Base.PathMeta.HighResTS = millis

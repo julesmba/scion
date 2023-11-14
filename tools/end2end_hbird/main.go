@@ -305,7 +305,7 @@ func (c *client) attemptRequest(n int) bool {
 	if path != nil {
 		if !flyovers {
 			// Standard path, no reservations at all
-			path, err = hummingbird.ConvertToHbirdPath(path)
+			path, err = hummingbird.ConvertToHbirdPath(path, time.Now())
 			if err != nil {
 				logger.Error("Error converting path to Hummingbird", "err", err)
 				return false
@@ -329,7 +329,7 @@ func (c *client) attemptRequest(n int) bool {
 				logger.Error("Error applying reservations", "err", err)
 			}
 
-			path, err = hbirdClient.FinalizePath(path, pingPayloadLen)
+			path, err = hbirdClient.FinalizePath(path, pingPayloadLen, time.Now())
 			if err != nil {
 				logger.Error("Error assembling hummingbird path", "err", err)
 			}
@@ -359,7 +359,7 @@ func (c *client) attemptRequest(n int) bool {
 				logger.Error("Error applying reservations", "err", err)
 			}
 
-			path, err = hbirdClient.FinalizePath(path, pingPayloadLen)
+			path, err = hbirdClient.FinalizePath(path, pingPayloadLen, time.Now())
 			if err != nil {
 				logger.Error("Error assembling hummingbird path", "err", err)
 			}
