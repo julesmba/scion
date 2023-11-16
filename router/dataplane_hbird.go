@@ -17,6 +17,7 @@ import (
 	"github.com/scionproto/scion/pkg/slayers/path"
 	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 	"github.com/scionproto/scion/pkg/spao"
+	"github.com/scionproto/scion/router/tokenbucket"
 )
 
 // SetSecretValue sets the key for the PRF function used to compute the Hummingbird Auth Key
@@ -307,6 +308,57 @@ func (p *scionPacketProcessor) validatePathMetaTimestamp() {
 	}
 }
 
+// Converts a flyover bandwidth value to bytes per second
+func convertResBw(bw uint16) float64 {
+
+	// In this implementation, we choose to allow reservations up to 64 kBps
+	// Since the bandwidth field has 10 bits, we multiply by 64 to reach the target range
+	return float64(bw * 64)
+}
+
+func (p *scionPacketProcessor) checkReservationBandwidth() (processResult, error) {
+
+	// Only check bandwidth if packet is given priority
+	// Bandwidth check is NOT performed for late packets that have flyover but no priority
+	if !p.hasPriority {
+		return processResult{}, nil
+	}
+	v, ok := p.d.tokenBuckets.Load(p.flyoverField.ResID)
+	if ok {
+		// Check bandwidth
+		tb, ok := v.(*tokenbucket.TokenBucket)
+		if !ok {
+			log.Error("Non-tokenbucket value found in tokenbucket map")
+			panic("tokenbucket map contains value of different type")
+		}
+		resBw := convertResBw(p.flyoverField.Bw)
+		if tb.CIR != resBw {
+			// It is possible for different reservations to share a resID
+			// if they do not overlap in time
+			tb.SetRate(resBw)
+			tb.SetBurstSize(resBw)
+		}
+		if tb.Apply(int(p.scionLayer.PayloadLen), time.Now()) {
+			return processResult{}, nil
+		}
+		// TODO: return scmp packet for reservation overuse
+		return processResult{}, serrors.New("Reservation bandwidth overuse",
+			"ResID", p.flyoverField.ResID, "Authorized Bandwidth", p.flyoverField.Bw)
+	}
+	// Initialize token bucket for given reservation
+	resBw := convertResBw(p.flyoverField.Bw)
+	now := time.Now()
+	tb := tokenbucket.NewTokenBucket(now, resBw, resBw)
+	p.d.tokenBuckets.Store(p.flyoverField.ResID, tb)
+
+	if tb.Apply(int(p.scionLayer.PayloadLen), time.Now()) {
+		return processResult{}, nil
+	}
+	// TODO: return scmp packet for reservation overuse
+	return processResult{}, serrors.New("Reservation bandwidth overuse",
+		"ResID", p.flyoverField.ResID, "Authorized Bandwidth", p.flyoverField.Bw)
+}
+
 func (p *scionPacketProcessor) handleHbirdIngressRouterAlert() (processResult, error) {
 	if p.ingressID == 0 {
 		return processResult{}, nil
@@ -525,6 +577,9 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 	}
 	if p.hasPriority && p.flyoverField.Flyover {
 		p.validatePathMetaTimestamp()
+	}
+	if r, err := p.checkReservationBandwidth(); err != nil {
+		return r, err
 	}
 	if r, err := p.handleHbirdIngressRouterAlert(); err != nil {
 		return r, err

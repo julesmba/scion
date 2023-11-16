@@ -121,6 +121,9 @@ type DataPlane struct {
 	// The pool that stores all the packet buffers as described in the design document. See
 	// https://github.com/scionproto/scion/blob/master/doc/dev/design/BorderRouter.rst
 	packetPool chan []byte
+
+	// Contains the token buckets for hummingbird bandwidth check
+	tokenBuckets sync.Map
 }
 
 var (

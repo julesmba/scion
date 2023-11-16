@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
+	"github.com/google/gopacket"
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/private/util"
 	"github.com/scionproto/scion/pkg/private/xtest"
@@ -622,7 +623,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 				dpath.HopFields = []hummingbird.FlyoverHopField{
 					{HopField: path.HopField{ConsIngress: 41, ConsEgress: 40}},
 					{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-					{Flyover: true, HopField: path.HopField{ConsIngress: 01, ConsEgress: 0}, ResStartTime: 123, Duration: 304},
+					{Flyover: true, HopField: path.HopField{ConsIngress: 01, ConsEgress: 0},
+						ResStartTime: 123, Duration: 304, Bw: 16},
 				}
 				dpath.Base.PathMeta.SegLen[0] = 11
 				dpath.Base.NumLines = 11
@@ -656,9 +658,12 @@ func TestProcessHbirdPacket(t *testing.T) {
 				spkt, dpath := prepHbirdMsg(now)
 				spkt.SrcIA = xtest.MustParseIA("1-ff00:0:110")
 				dpath.HopFields = []hummingbird.FlyoverHopField{
-					{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 1}, ResStartTime: 123, Duration: 304},
-					{Flyover: true, HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}, ResStartTime: 123, Duration: 304},
-					{Flyover: true, HopField: path.HopField{ConsIngress: 41, ConsEgress: 40}, ResStartTime: 123, Duration: 304},
+					{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 1},
+						ResStartTime: 123, Duration: 304, Bw: 16},
+					{Flyover: true, HopField: path.HopField{ConsIngress: 31, ConsEgress: 30},
+						ResStartTime: 123, Duration: 304, Bw: 16},
+					{Flyover: true, HopField: path.HopField{ConsIngress: 41, ConsEgress: 40},
+						ResStartTime: 123, Duration: 304, Bw: 16},
 				}
 				dpath.Base.PathMeta.CurrHF = 0
 				dpath.Base.PathMeta.SegLen[0] = 15
@@ -761,7 +766,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				spkt, dpath := prepHbirdMsg(now)
 				dpath.HopFields = []hummingbird.FlyoverHopField{
 					{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-					{Flyover: true, HopField: path.HopField{ConsIngress: 2, ConsEgress: 1}, ResID: 42, ResStartTime: 5, Duration: 301},
+					{Flyover: true, HopField: path.HopField{ConsIngress: 2, ConsEgress: 1}, ResID: 42, ResStartTime: 5, Duration: 301, Bw: 16},
 					{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
 				}
 				dpath.Base.PathMeta.CurrHF = 3
@@ -802,14 +807,15 @@ func TestProcessHbirdPacket(t *testing.T) {
 				spkt, dpath := prepHbirdMsg(now)
 				dpath.HopFields = []hummingbird.FlyoverHopField{
 					{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-					{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 3}, ResID: 42, ResStartTime: 5, Duration: 301},
+					{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 3},
+						ResID: 42, ResStartTime: 5, Duration: 301, Bw: 16},
 					{HopField: path.HopField{ConsIngress: 50, ConsEgress: 51}},
 				}
 				dpath.Base.PathMeta.SegLen[0] = 11
 				dpath.Base.NumLines = 11
-				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
+				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
 				if afterProcessing {
-					// dpath.HopFields[1].Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1])
 					ret := toMsg(t, spkt, dpath)
 					ret.Addr = &net.UDPAddr{IP: net.ParseIP("10.0.200.200").To4(), Port: 30043}
 					ret.Flags, ret.NN, ret.N, ret.OOB = 0, 0, 0, nil
@@ -3508,6 +3514,71 @@ func TestHbirdPacketPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBandwidthCheck(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	key := []byte("testkey_xxxxxxxx")
+	sv := []byte("test_secretvalue")
+	now := time.Now()
+
+	dp := router.NewDP(
+		map[uint16]router.BatchConn{
+			uint16(2): mock_router.NewMockBatchConn(ctrl),
+		},
+		map[uint16]topology.LinkType{
+			1: topology.Parent,
+			2: topology.Child,
+		},
+		nil, nil, nil, xtest.MustParseIA("1-ff00:0:110"), nil, key, sv)
+
+	spkt, dpath := prepHbirdMsg(now)
+	dpath.HopFields = []hummingbird.FlyoverHopField{
+		{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
+		{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, Bw: 2, ResStartTime: 123, Duration: 304},
+		{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
+	}
+	dpath.Base.PathMeta.SegLen[0] = 11
+	dpath.Base.PathMeta.CurrHF = 3
+	dpath.Base.NumLines = 11
+
+	spkt.PayloadLen = 120
+	dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
+
+	msg := toLongMsg(t, spkt, dpath)
+
+	_, err := dp.ProcessPkt(1, msg)
+	assert.NoError(t, err)
+
+	msg = toLongMsg(t, spkt, dpath)
+	_, err = dp.ProcessPkt(1, msg)
+	assert.Error(t, err)
+
+	time.Sleep(time.Duration(1) * time.Second)
+
+	msg = toLongMsg(t, spkt, dpath)
+	_, err = dp.ProcessPkt(1, msg)
+	assert.NoError(t, err)
+}
+
+func toLongMsg(t *testing.T, spkt *slayers.SCION, dpath path.Path) *ipv4.Message {
+	t.Helper()
+	ret := &ipv4.Message{}
+	spkt.Path = dpath
+	buffer := gopacket.NewSerializeBuffer()
+	payload := [120]byte{}
+	err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{FixLengths: true},
+		spkt, gopacket.Payload(payload[:]))
+	require.NoError(t, err)
+	raw := buffer.Bytes()
+	ret.Buffers = make([][]byte, 1)
+	ret.Buffers[0] = make([]byte, 1500)
+	copy(ret.Buffers[0], raw)
+	ret.N = len(raw)
+	ret.Buffers[0] = ret.Buffers[0][:ret.N]
+	return ret
 }
 
 func prepHbirdMsg(now time.Time) (*slayers.SCION, *hummingbird.Decoded) {
