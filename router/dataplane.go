@@ -21,7 +21,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/subtle"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash"
@@ -1014,12 +1013,12 @@ func (p *scionPacketProcessor) reset() error {
 	p.ingressID = 0
 	//p.scionLayer // cannot easily be reset
 	p.path = nil
-	p.hbirdPath = nil
 	p.hopField = path.HopField{}
 	p.infoField = path.InfoField{}
-	p.flyoverField = hummingbird.FlyoverHopField{}
 	p.effectiveXover = false
 	p.peering = false
+	p.hbirdPath = nil
+	p.flyoverField = hummingbird.FlyoverHopField{}
 	p.hasPriority = false
 
 	if err := p.buffer.Clear(); err != nil {
@@ -1200,9 +1199,6 @@ type scionPacketProcessor struct {
 	buffer gopacket.SerializeBuffer
 	// mac is the hasher for the MAC computation.
 	mac hash.Hash
-	// block is the keyed PRF for the hummingbird auth key computation
-	prf cipher.Block
-
 	// scionLayer is the SCION gopacket layer.
 	scionLayer slayers.SCION
 	hbhLayer   slayers.HopByHopExtnSkipper
@@ -1212,8 +1208,6 @@ type scionPacketProcessor struct {
 
 	// path is the raw SCION path. Will be set during processing.
 	path *scion.Raw
-	// hbirdPath is the raw Hummingbird path. Will be set during processing
-	hbirdPath *hummingbird.Raw
 	// hopField is the current hopField field, is updated during processing.
 	hopField path.HopField
 	// infoField is the current infoField field, is updated during processing.
@@ -1222,16 +1216,21 @@ type scionPacketProcessor struct {
 	effectiveXover bool
 	// peering indicates that the hop field being processed is a peering hop field.
 	peering bool
-	// flyoverField is the flyoverfield containing the current hopfield for hummingbird packets
-	flyoverField hummingbird.FlyoverHopField
-	// hasPriority indicates whether this packet has forwarding priority
-	hasPriority bool
 
 	// cachedMac contains the full 16 bytes of the MAC. Will be set during processing.
 	// For a hop performing an Xover, it is the MAC corresponding to the down segment.
 	cachedMac []byte
 	// macInputBuffer avoid allocating memory during processing.
 	macInputBuffer []byte
+
+	// prf is the keyed PRF for the hummingbird auth key computation
+	prf cipher.Block
+	// hbirdPath is the raw Hummingbird path. Will be set during processing
+	hbirdPath *hummingbird.Raw
+	// flyoverField is the flyoverfield containing the current hopfield for hummingbird packets
+	flyoverField hummingbird.FlyoverHopField
+	// hasPriority indicates whether this packet has forwarding priority
+	hasPriority bool
 	// hbirdXkbuffer avoid allocating memory during aes computation for hummingbird flyover mac
 	hbirdXkbuffer []uint32
 
@@ -1546,16 +1545,6 @@ func (p *scionPacketProcessor) currentHopPointer() uint16 {
 	}
 	return uint16(slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
 		scion.MetaLen + path.InfoLen*p.path.NumINF + path.HopLen*int(p.path.PathMeta.CurrHF))
-}
-
-// Compares two 6 byte arrays.
-// Always returns false if at least one input is of a different length.
-// Returns true if equal, false otherwise.
-func CompareMacThisIsNotConstant(a, b []byte) bool {
-	if len(a) != 6 || len(b) != 6 {
-		return false
-	}
-	return binary.BigEndian.Uint32(a) == binary.BigEndian.Uint32(b) && a[4] == b[4] && a[5] == b[5]
 }
 
 func (p *scionPacketProcessor) verifyCurrentMAC() (processResult, error) {
