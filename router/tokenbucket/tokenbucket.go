@@ -19,6 +19,7 @@ type TokenBucket struct {
 	lock sync.Mutex
 }
 
+// Initializes a new tockenbucket for the given burstSize and rate
 func NewTokenBucket(initialTime time.Time, burstSize float64, rate float64) *TokenBucket {
 	return &TokenBucket{
 		CurrentTokens:   rate,
@@ -28,12 +29,14 @@ func NewTokenBucket(initialTime time.Time, burstSize float64, rate float64) *Tok
 	}
 }
 
+// Sets a new rate for the token bucket
 func (t *TokenBucket) SetRate(rate float64) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.CIR = rate
 }
 
+// Sets a new burst size for the token bucket
 func (t *TokenBucket) SetBurstSize(burstSize float64) {
 	t.lock.Lock()
 	defer t.lock.Unlock()

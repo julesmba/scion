@@ -3730,7 +3730,7 @@ func TestBandwidthCheck(t *testing.T) {
 	spkt, dpath := prepHbirdMsg(now)
 	dpath.HopFields = []hummingbird.FlyoverHopField{
 		{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-		{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2},
+		{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, ResID: 42,
 			Bw: 2, ResStartTime: 123, Duration: 304},
 		{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
 	}
@@ -3752,6 +3752,63 @@ func TestBandwidthCheck(t *testing.T) {
 	assert.Error(t, err)
 
 	time.Sleep(time.Duration(1) * time.Second)
+
+	msg = toLongMsg(t, spkt, dpath)
+	_, err = dp.ProcessPkt(1, msg)
+	assert.NoError(t, err)
+}
+
+func TestBandwidthCheckDifferentResID(t *testing.T) {
+	// Verifies that packets of one reservation do not affect
+	// available bandwidth of another reservation
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	key := []byte("testkey_xxxxxxxx")
+	sv := []byte("test_secretvalue")
+	now := time.Now()
+
+	dp := router.NewDP(
+		map[uint16]router.BatchConn{
+			uint16(2): mock_router.NewMockBatchConn(ctrl),
+		},
+		map[uint16]topology.LinkType{
+			1: topology.Parent,
+			2: topology.Child,
+		},
+		nil, nil, nil, xtest.MustParseIA("1-ff00:0:110"), nil, key, sv)
+
+	spkt, dpath := prepHbirdMsg(now)
+	dpath.HopFields = []hummingbird.FlyoverHopField{
+		{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
+		{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, ResID: 24,
+			Bw: 2, ResStartTime: 123, Duration: 304},
+		{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
+	}
+	dpath.Base.PathMeta.SegLen[0] = 11
+	dpath.Base.PathMeta.CurrHF = 3
+	dpath.Base.NumLines = 11
+
+	spkt.PayloadLen = 120
+	dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+		spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
+
+	msg := toLongMsg(t, spkt, dpath)
+
+	_, err := dp.ProcessPkt(1, msg)
+	assert.NoError(t, err)
+
+	dpath.HopFields[1].ResID = 32
+	dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+		spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
+
+	msg = toLongMsg(t, spkt, dpath)
+	_, err = dp.ProcessPkt(1, msg)
+	assert.NoError(t, err)
+
+	dpath.HopFields[1].ResID = 42
+	dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+		spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
 
 	msg = toLongMsg(t, spkt, dpath)
 	_, err = dp.ProcessPkt(1, msg)
