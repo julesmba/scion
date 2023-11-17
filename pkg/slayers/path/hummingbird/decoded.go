@@ -121,7 +121,7 @@ func (s *Decoded) SerializeTo(b []byte) error {
 	return nil
 }
 
-// Reverse reverses a SCION path.
+// Reverse reverses a hummingbird path.
 // Removes all reservations from a Hummingbird path, as these are not bidirectional
 func (s *Decoded) Reverse() (path.Path, error) {
 	if s.NumINF == 0 {
@@ -186,7 +186,7 @@ func (s *Decoded) removeFlyovers() error {
 	return nil
 }
 
-// ToRaw tranforms scion.Decoded into scion.Raw.
+// ToRaw tranforms hummingbird.Decoded into hummingbird.Raw.
 func (s *Decoded) ToRaw() (*Raw, error) {
 	b := make([]byte, s.Len())
 	if err := s.SerializeTo(b); err != nil {

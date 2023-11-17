@@ -69,7 +69,7 @@ func (s *Raw) Reverse() (path.Path, error) {
 	return s, err
 }
 
-// ToDecoded transforms a scion.Raw to a scion.Decoded.
+// ToDecoded transforms a hummingbird.Raw to a hummingbird.Decoded.
 func (s *Raw) ToDecoded() (*Decoded, error) {
 	// Serialize PathMeta to ensure potential changes are reflected Raw.
 
@@ -107,7 +107,7 @@ func (s *Raw) GetInfoField(idx int) (path.InfoField, error) {
 	return info, nil
 }
 
-// GetCurrentInfoField is a convenience method that returns the current hop field pointed to by the
+// GetCurrentInfoField is a convenience method that returns the current info field pointed to by the
 // CurrINF index in the path meta header.
 func (s *Raw) GetCurrentInfoField() (path.InfoField, error) {
 	return s.GetInfoField(int(s.PathMeta.CurrINF))
@@ -130,7 +130,9 @@ func (s *Raw) SetInfoField(info path.InfoField, idx int) error {
 	return info.SerializeTo(s.Raw[infOffset : infOffset+path.InfoLen])
 }
 
-// GetHopField returns the HopField at a given index.
+// GetHopField returns the HopField beginninrg at a given index.
+// Does NOT check whether the given index is the first line of a hopfield
+// Responsibility to check that falls to the caller
 func (s *Raw) GetHopField(idx int) (FlyoverHopField, error) {
 	if idx >= s.NumLines-HopLines+1 {
 		return FlyoverHopField{},
@@ -179,6 +181,7 @@ func (s *Raw) ReplaceCurrentMac(mac []byte) error {
 }
 
 // Returns a slice of the MAC of the hopfield starting at index idx
+// It is the caller's responsibility to make sure line idx is the beginning of a hopfield.
 func (s *Raw) GetMac(idx int) ([]byte, error) {
 	if idx >= s.NumLines-HopLines+1 {
 		return nil, serrors.New("HopField index out of bounds",
@@ -195,6 +198,8 @@ func (s *Raw) GetMac(idx int) ([]byte, error) {
 // it is replaced by a FlyoverHopField with dummy values.
 // This works for SCMP packets as Flyover hops are removed later
 // in the process of building a SCMP packet.
+//
+// Does not allow replacing a normal hopfield with a FlyoverHopField
 func (s *Raw) SetHopField(hop FlyoverHopField, idx int) error {
 	if idx >= s.NumLines-HopLines+1 {
 		return serrors.New("HopField index out of bounds",
@@ -260,7 +265,7 @@ func (s *Raw) GetNextEgress() (uint16, error) {
 }
 
 // Returns the ingress interface of the previous hop
-// Assumes the previous hop is NOT a flyoverhop
+// Does NOT work if the previous hop is a flyover hop
 func (s *Raw) GetPreviousIngress() (uint16, error) {
 	idx := int(s.Base.PathMeta.CurrHF) - HopLines
 	if idx < 0 {
@@ -275,6 +280,7 @@ func (s *Raw) GetPreviousIngress() (uint16, error) {
 
 // Attaches current flyoverfield to next hopfield.
 // DOES NOT adapt MACS.
+// Next hopfield has to NOT already have a flyover
 func (s *Raw) DoFlyoverXover() error {
 	idx := int(s.Base.PathMeta.CurrHF)
 	if idx >= s.NumLines-7 {
@@ -309,6 +315,7 @@ func (s *Raw) DoFlyoverXover() error {
 
 // Attaches current flyoverfield to previous hopfield
 // DOES NOT adapt MACs
+// It is assumed that the previous hopfield does NOT already have a flyover
 func (s *Raw) ReverseFlyoverXover() error {
 	idx := int(s.Base.PathMeta.CurrHF)
 	if idx < 6 {
