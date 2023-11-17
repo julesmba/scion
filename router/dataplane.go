@@ -151,7 +151,6 @@ var (
 	macVerificationFailed         = errors.New("MAC verification failed")
 	badPacketSize                 = errors.New("bad packet size")
 	slowPathRequired              = errors.New("slow-path required")
-	reservationExpired            = errors.New("current time is outside of reservation validity")
 
 	// zeroBuffer will be used to reset the Authenticator option in the
 	// scionPacketProcessor.OptAuth

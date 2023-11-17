@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/subtle"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"time"
 
@@ -19,6 +20,10 @@ import (
 	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 	"github.com/scionproto/scion/pkg/spao"
 	"github.com/scionproto/scion/router/tokenbucket"
+)
+
+var (
+	reservationExpired = errors.New("current time is outside of reservation validity")
 )
 
 // SetHbirdKey sets the key for the PRF function used to compute the Hummingbird Auth Key
