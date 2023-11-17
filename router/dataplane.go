@@ -1564,6 +1564,8 @@ func (p *scionPacketProcessor) verifyCurrentMAC() (processResult, error) {
 		}
 		return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
 	}
+	// Add the full MAC to the SCION packet processor
+	// such that EPIC does not need to recalculate it
 	p.cachedMac = fullMac
 
 	return processResult{}, nil
