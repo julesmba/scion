@@ -6,9 +6,10 @@ import (
 	"encoding/binary"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDeriveAuthKey(t *testing.T) {

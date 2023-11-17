@@ -302,7 +302,8 @@ func (c *HummingbirdClient) RequestReservationsAllHops(
 }
 
 // Requests new reservations for the listed Hops and returns them once they are obtained
-// TODO: add timeout after which already received reservations (if any) are returned once we have actual requests
+// TODO: add timeout after which already received reservations
+// (if any) are returned once we have actual requests
 // TODO: add fully async version of this
 func RequestReservationForASes(
 	hops []Hop, bw uint16, start uint32, duration uint16) ([]Reservation, error) {
@@ -374,7 +375,8 @@ func (c *HummingbirdClient) ApplyReservations(res []Reservation) error {
 }
 
 // Returns all the reservations that the client may currently use
-// If multiple reservations per hop are present, the one currently used is the first appearing in the returned array
+// If there are multiple reservations for a hop,
+// The one currently used is the first appearing in the returned array
 func (c *HummingbirdClient) GetUsedReservations() []Reservation {
 	res := make([]Reservation, 0, len(c.hops))
 	for _, h := range c.hops {
@@ -435,7 +437,8 @@ func (c *HummingbirdClient) CheckExpiry(t uint32) {
 
 		// Remove expired reservations
 		for j := 0; j < len(c.hops[i].reservations); {
-			if c.hops[i].reservations[j].StartTime+uint32(c.hops[i].reservations[j].Duration) < (now + t) {
+			if c.hops[i].reservations[j].StartTime+uint32(c.hops[i].reservations[j].Duration) <
+				(now + t) {
 				copy(c.hops[i].reservations[j:], c.hops[i].reservations[j+1:])
 				c.hops[i].reservations = c.hops[i].reservations[:len(c.hops[i].reservations)-1]
 			} else {
@@ -486,7 +489,8 @@ func (c *HummingbirdClient) CheckExpiry(t uint32) {
 // Sets pathmeta timestamps and increments duplicate detection counter.
 // Updates MACs of all flyoverfields
 // replaces the dataplane of the input snet.path with the finished hummingbird path
-func (c *HummingbirdClient) FinalizePath(p snet.Path, pktLen uint16, timeStamp time.Time) (snet.Path, error) {
+func (c *HummingbirdClient) FinalizePath(p snet.Path, pktLen uint16,
+	timeStamp time.Time) (snet.Path, error) {
 	if p == nil {
 		return nil, serrors.New("snet path is nil")
 	}

@@ -3,9 +3,10 @@ package hummingbird_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/scionproto/scion/pkg/slayers/path"
 	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestFlyoverHopSerializeDecodeFlyover(t *testing.T) {

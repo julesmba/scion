@@ -8,6 +8,10 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/net/ipv4"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/private/util"
 	"github.com/scionproto/scion/pkg/private/xtest"
@@ -17,9 +21,6 @@ import (
 	"github.com/scionproto/scion/private/topology"
 	"github.com/scionproto/scion/router"
 	"github.com/scionproto/scion/router/mock_router"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/net/ipv4"
 )
 
 func TestDataPlaneSetSecretValue(t *testing.T) {
@@ -75,7 +76,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 					{HopField: path.HopField{ConsIngress: 01, ConsEgress: 0}},
 				}
 				dpath.Base.PathMeta.CurrHF = 6
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[2].HopField)
 				ret := toMsg(t, spkt, dpath)
 				if afterProcessing {
 					ret.Addr = &net.UDPAddr{IP: dst.IP().AsSlice(), Port: topology.EndhostPort}
@@ -108,7 +110,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 					{HopField: path.HopField{ConsIngress: 41, ConsEgress: 40}},
 				}
 				dpath.Base.PathMeta.CurrHF = 0
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				if !afterProcessing {
 					return toMsg(t, spkt, dpath)
 				}
@@ -143,7 +146,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 					{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
 				}
 				dpath.Base.PathMeta.CurrHF = 3
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				if !afterProcessing {
 					return toMsg(t, spkt, dpath)
 				}
@@ -178,7 +182,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 				}
 				dpath.Base.PathMeta.CurrHF = 3
 				dpath.InfoFields[0].ConsDir = false
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				if !afterProcessing {
 					dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
 					return toMsg(t, spkt, dpath)
@@ -212,7 +217,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 					{HopField: path.HopField{ConsIngress: 1, ConsEgress: 3}},
 					{HopField: path.HopField{ConsIngress: 50, ConsEgress: 51}},
 				}
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				ret := toMsg(t, spkt, dpath)
 				if afterProcessing {
 					ret.Addr = &net.UDPAddr{IP: net.ParseIP("10.0.200.200").To4(), Port: 30043}
@@ -260,8 +266,10 @@ func TestProcessHbirdPacket(t *testing.T) {
 						{HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}},  // IA 110
 					},
 				}
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[2].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 
 				if !afterProcessing {
 					dpath.InfoFields[0].UpdateSegID(dpath.HopFields[2].HopField.Mac)
@@ -292,7 +300,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 					{HopField: path.HopField{ConsIngress: 1, ConsEgress: 0}},
 				}
 				dpath.Base.PathMeta.CurrHF = 6
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				ret := toMsg(t, spkt, dpath)
 				return ret
 			},
@@ -629,9 +638,11 @@ func TestProcessHbirdPacket(t *testing.T) {
 				dpath.Base.PathMeta.SegLen[0] = 11
 				dpath.Base.NumLines = 11
 				dpath.Base.PathMeta.CurrHF = 6
-				dpath.HopFields[2].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
+				dpath.HopFields[2].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
 				if afterProcessing {
-					dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
+					dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+						dpath.HopFields[2].HopField)
 					ret := toMsg(t, spkt, dpath)
 					ret.Addr = &net.UDPAddr{IP: dst.IP().AsSlice(), Port: topology.EndhostPort}
 					ret.Flags, ret.NN, ret.N, ret.OOB = 0, 0, 0, nil
@@ -668,11 +679,13 @@ func TestProcessHbirdPacket(t *testing.T) {
 				dpath.Base.PathMeta.CurrHF = 0
 				dpath.Base.PathMeta.SegLen[0] = 15
 				dpath.NumLines = 15
-				dpath.HopFields[0].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[0], dpath.Base.PathMeta)
+				dpath.HopFields[0].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[0], dpath.Base.PathMeta)
 				if !afterProcessing {
 					return toMsg(t, spkt, dpath)
 				}
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				_ = dpath.IncPath(hummingbird.FlyoverLines)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
 				ret := toMsg(t, spkt, dpath)
@@ -697,12 +710,14 @@ func TestProcessHbirdPacket(t *testing.T) {
 				dpath.HopFields = []hummingbird.FlyoverHopField{
 					{HopField: path.HopField{ConsIngress: 41, ConsEgress: 40}},
 					{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-					{Flyover: true, HopField: path.HopField{ConsIngress: 01, ConsEgress: 0}, ResStartTime: 5, Duration: 2},
+					{Flyover: true, HopField: path.HopField{ConsIngress: 01, ConsEgress: 0},
+						ResStartTime: 5, Duration: 2},
 				}
 				dpath.Base.PathMeta.SegLen[0] = 11
 				dpath.Base.NumLines = 11
 				dpath.Base.PathMeta.CurrHF = 6
-				dpath.HopFields[2].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
+				dpath.HopFields[2].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
 				ret := toMsg(t, spkt, dpath)
 				if afterProcessing {
 					ret.Addr = &net.UDPAddr{IP: dst.IP().AsSlice(), Port: topology.EndhostPort}
@@ -729,17 +744,20 @@ func TestProcessHbirdPacket(t *testing.T) {
 				spkt, dpath := prepHbirdMsg(now)
 				dpath.HopFields = []hummingbird.FlyoverHopField{
 					{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-					{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, Bw: 5, ResStartTime: 123, Duration: 304},
+					{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2},
+						Bw: 5, ResStartTime: 123, Duration: 304},
 					{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
 				}
 				dpath.Base.PathMeta.SegLen[0] = 11
 				dpath.Base.PathMeta.CurrHF = 3
 				dpath.Base.NumLines = 11
-				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
+				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
 				if !afterProcessing {
 					return toMsg(t, spkt, dpath)
 				}
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				_ = dpath.IncPath(hummingbird.FlyoverLines)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
 				ret := toMsg(t, spkt, dpath)
@@ -766,7 +784,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 				spkt, dpath := prepHbirdMsg(now)
 				dpath.HopFields = []hummingbird.FlyoverHopField{
 					{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-					{Flyover: true, HopField: path.HopField{ConsIngress: 2, ConsEgress: 1}, ResID: 42, ResStartTime: 5, Duration: 301, Bw: 16},
+					{Flyover: true, HopField: path.HopField{ConsIngress: 2, ConsEgress: 1},
+						ResID: 42, ResStartTime: 5, Duration: 301, Bw: 16},
 					{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
 				}
 				dpath.Base.PathMeta.CurrHF = 3
@@ -774,13 +793,15 @@ func TestProcessHbirdPacket(t *testing.T) {
 				dpath.Base.PathMeta.SegLen[0] = 11
 
 				dpath.InfoFields[0].ConsDir = false
-				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen,
-					dpath.InfoFields[0], dpath.HopFields[1], dpath.PathMeta)
+				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.PathMeta)
 				if !afterProcessing {
-					dpath.InfoFields[0].UpdateSegID(computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField))
+					dpath.InfoFields[0].UpdateSegID(computeMAC(t, key, dpath.InfoFields[0],
+						dpath.HopFields[1].HopField))
 					return toMsg(t, spkt, dpath)
 				}
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				require.NoError(t, dpath.IncPath(hummingbird.FlyoverLines))
 				ret := toMsg(t, spkt, dpath)
 				ret.Addr = nil
@@ -859,17 +880,21 @@ func TestProcessHbirdPacket(t *testing.T) {
 						{SegID: 0x222, ConsDir: false, Timestamp: util.TimeToSecs(now)},
 					},
 					HopFields: []hummingbird.FlyoverHopField{
-						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 1}},                                                            // IA 110
-						{HopField: path.HopField{ConsIngress: 31, ConsEgress: 0}},                                                           // Src
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 51}, ResID: 34, ResStartTime: 5, Duration: 310}, // Dst
-						{HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}},                                                            // IA 110
+						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 1}},  // IA 110
+						{HopField: path.HopField{ConsIngress: 31, ConsEgress: 0}}, // Src
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 51},
+							ResID: 34, ResStartTime: 5, Duration: 310}, // Dst
+						{HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}}, // IA 110
 					},
 				}
-				dpath.HopFields[2].HopField.Mac = computeAggregateMacXover(t, key, sv, spkt.DstIA, spkt.PayloadLen, 3, 51,
+				dpath.HopFields[2].HopField.Mac = computeAggregateMacXover(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, 3, 51,
 					dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				if !afterProcessing {
-					dpath.InfoFields[0].UpdateSegID(computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField))
+					dpath.InfoFields[0].UpdateSegID(computeMAC(t, key, dpath.InfoFields[0],
+						dpath.HopFields[2].HopField))
 
 					return toMsg(t, spkt, dpath)
 				}
@@ -879,10 +904,11 @@ func TestProcessHbirdPacket(t *testing.T) {
 				dpath.HopFields[3].ResStartTime = 5
 				dpath.HopFields[3].Duration = 310
 
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
-				dpath.HopFields[3].HopField.Mac = computeAggregateMacXover(t, key, sv, spkt.DstIA, spkt.PayloadLen, 3, 51,
-					dpath.InfoFields[1], dpath.HopFields[3], dpath.PathMeta)
-				//dpath.HopFields[3].Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3])
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[2].HopField)
+				dpath.HopFields[3].HopField.Mac = computeAggregateMacXover(t, key, sv,
+					spkt.DstIA, spkt.PayloadLen, 3, 51, dpath.InfoFields[1], dpath.HopFields[3],
+					dpath.PathMeta)
 				dpath.PathMeta.SegLen[0] -= 2
 				dpath.PathMeta.SegLen[1] += 2
 				require.NoError(t, dpath.IncPath(hummingbird.FlyoverLines))
@@ -926,20 +952,19 @@ func TestProcessHbirdPacket(t *testing.T) {
 						{SegID: 0x222, ConsDir: true, Timestamp: util.TimeToSecs(now)},
 					},
 					HopFields: []hummingbird.FlyoverHopField{
-						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 1}},                                                        // IA 110
-						{Flyover: true, HopField: path.HopField{ConsIngress: 51, ConsEgress: 0}, Bw: 5, ResStartTime: 5, Duration: 310}, // Src
-						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 31}},                                                       // Dst
-						{HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}},                                                        // IA 110
+						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 1}}, // IA 110
+						{Flyover: true, HopField: path.HopField{ConsIngress: 51, ConsEgress: 0},
+							Bw: 5, ResStartTime: 5, Duration: 310}, // Src
+						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 31}}, // Dst
+						{HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}},  // IA 110
 					},
 				}
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
-				dpath.HopFields[1].HopField.Mac = computeAggregateMacXover(t, key, sv, spkt.DstIA, spkt.PayloadLen, 51, 31,
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
+				dpath.HopFields[1].HopField.Mac = computeAggregateMacXover(t, key, sv,
+					spkt.DstIA, spkt.PayloadLen, 51, 31,
 					dpath.InfoFields[0], dpath.HopFields[1], dpath.PathMeta)
-				// dpath.HopFields[3].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[1], dpath.HopFields[3], dpath.PathMeta)
 				if !afterProcessing {
-					//dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
-					// dpath.PathMeta.CurrHF = 6
-					// dpath.PathMeta.CurrINF = 1
 
 					return toMsg(t, spkt, dpath)
 				}
@@ -949,11 +974,11 @@ func TestProcessHbirdPacket(t *testing.T) {
 				dpath.HopFields[2].ResStartTime = 5
 				dpath.HopFields[2].Duration = 310
 
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
-				dpath.HopFields[2].HopField.Mac = computeAggregateMacXover(t, key, sv, spkt.DstIA, spkt.PayloadLen, 51, 31,
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
+				dpath.HopFields[2].HopField.Mac = computeAggregateMacXover(t, key, sv,
+					spkt.DstIA, spkt.PayloadLen, 51, 31,
 					dpath.InfoFields[1], dpath.HopFields[2], dpath.PathMeta)
-				//dpath.HopFields[2].Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2])
-				//dpath.HopFields[3].Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3])
 				dpath.PathMeta.SegLen[0] -= 2
 				dpath.PathMeta.SegLen[1] += 2
 				require.NoError(t, dpath.IncPath(hummingbird.HopLines))
@@ -1002,19 +1027,17 @@ func TestProcessHbirdPacket(t *testing.T) {
 						{SegID: 0x222, ConsDir: true, Timestamp: util.TimeToSecs(now)},
 					},
 					HopFields: []hummingbird.FlyoverHopField{
-						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 1}},                                                        // Src
-						{HopField: path.HopField{ConsIngress: 51, ConsEgress: 0}},                                                       // IA 110
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 31}, Bw: 5, ResStartTime: 5, Duration: 310}, // IA 110
-						{HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}},                                                        // Dst
+						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 1}},  // Src
+						{HopField: path.HopField{ConsIngress: 51, ConsEgress: 0}}, // IA 110
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 31},
+							Bw: 5, ResStartTime: 5, Duration: 310}, // IA 110
+						{HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}}, // Dst
 					},
 				}
-				dpath.HopFields[2].HopField.Mac = computeAggregateMacXover(t, key, sv, spkt.DstIA, spkt.PayloadLen, 51, 31,
+				dpath.HopFields[2].HopField.Mac = computeAggregateMacXover(t, key, sv,
+					spkt.DstIA, spkt.PayloadLen, 51, 31,
 					dpath.InfoFields[1], dpath.HopFields[2], dpath.PathMeta)
-				// dpath.HopFields[3].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[1], dpath.HopFields[3], dpath.PathMeta)
 				if !afterProcessing {
-					//dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
-					// dpath.PathMeta.CurrHF = 6
-					// dpath.PathMeta.CurrINF = 1
 					ret := toMsg(t, spkt, dpath)
 					ret.Addr = &net.UDPAddr{IP: net.ParseIP("10.0.200.200").To4(), Port: 30043}
 					return ret
@@ -1025,7 +1048,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 				dpath.HopFields[1].ResStartTime = 5
 				dpath.HopFields[1].Duration = 310
 
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[2].HopField.Mac)
 				require.NoError(t, dpath.IncPath(hummingbird.FlyoverLines))
 				dpath.PathMeta.SegLen[0] += 2
@@ -1077,7 +1101,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 					},
 					HopFields: []hummingbird.FlyoverHopField{
 						{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 						{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
 					},
 				}
@@ -1090,8 +1115,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 				// parent hop of HF[1] in the original beaconned segment,
 				// which is not in the path). So, we use one from an
 				// info field because computeMAC makes that easy.
-				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen,
-					dpath.InfoFields[1], dpath.HopFields[1], dpath.PathMeta)
+				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, dpath.InfoFields[1], dpath.HopFields[1], dpath.PathMeta)
 				dpath.HopFields[2].HopField.Mac = computeMAC(
 					t, sv, dpath.InfoFields[1], dpath.HopFields[2].HopField)
 				if !afterProcessing {
@@ -1149,7 +1174,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 					},
 					HopFields: []hummingbird.FlyoverHopField{
 						{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 						{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
 					},
 				}
@@ -1164,8 +1190,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 				// info field because computeMAC makes that easy.
 				dpath.HopFields[0].HopField.Mac = computeMAC(
 					t, sv, dpath.InfoFields[0], dpath.HopFields[0].HopField)
-				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen,
-					dpath.InfoFields[0], dpath.HopFields[1], dpath.PathMeta)
+				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.PathMeta)
 
 				// We're going against construction order, so the accumulator
 				// value is that of the previous hop in traversal order. The
@@ -1233,7 +1259,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 					HopFields: []hummingbird.FlyoverHopField{
 						{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
 						{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 						{HopField: path.HopField{ConsIngress: 50, ConsEgress: 51}},
 						// There has to be a 4th hop to make
 						// the 3rd router agree that the packet
@@ -1251,8 +1278,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 				// info field because computeMAC makes that easy.
 				dpath.HopFields[1].HopField.Mac = computeMAC(
 					t, sv, dpath.InfoFields[1], dpath.HopFields[1].HopField)
-				dpath.HopFields[2].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen,
-					dpath.InfoFields[1], dpath.HopFields[2], dpath.PathMeta)
+				dpath.HopFields[2].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, dpath.InfoFields[1], dpath.HopFields[2], dpath.PathMeta)
 				if !afterProcessing {
 					// The SegID we provide is that of HF[2] which happens to be SEG[1]'s SegID,
 					// so, already set.
@@ -1311,7 +1338,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 					},
 					HopFields: []hummingbird.FlyoverHopField{
 						{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 						{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
 						{HopField: path.HopField{ConsIngress: 50, ConsEgress: 51}},
 						// The second segment (4th hop) has to be
@@ -1327,8 +1355,8 @@ func TestProcessHbirdPacket(t *testing.T) {
 				// in the original beaconned segment, which is not in
 				// the path). So, we use one from an info field because
 				// computeMAC makes that easy.
-				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen,
-					dpath.InfoFields[0], dpath.HopFields[1], dpath.PathMeta)
+				dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+					spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.PathMeta)
 				dpath.HopFields[2].HopField.Mac = computeMAC(
 					t, sv, dpath.InfoFields[0], dpath.HopFields[2].HopField)
 
@@ -1412,7 +1440,8 @@ func TestHbirdPacketPath(t *testing.T) {
 	}{
 		"two hops consdir": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"), xtest.MustParseIA("1-ff00:0:110"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"),
+					xtest.MustParseIA("1-ff00:0:110"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -1438,9 +1467,12 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
+
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				// Reset SegID to original value
 				dpath.InfoFields[0].SegID = 0x111
 				ret := toMsg(t, spkt, dpath)
@@ -1475,7 +1507,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"two hops non consdir": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:111"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:111"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -1501,9 +1534,12 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
+
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				//dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
 
 				ret := toMsg(t, spkt, dpath)
@@ -1538,7 +1574,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"six hops astransit xover consdir": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"), xtest.MustParseIA("3-ff00:0:333"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"),
+					xtest.MustParseIA("3-ff00:0:333"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -1569,17 +1606,23 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[2].HopField)
 
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[3].HopField.Mac)
-				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[4].HopField)
+				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[4].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[4].HopField.Mac)
-				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[5].HopField)
+				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[5].HopField)
 				// Reset SegID to original value
 				dpath.InfoFields[0].SegID = 0x111
 				dpath.InfoFields[1].SegID = 0x222
@@ -1678,7 +1721,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"six hops astransit xover non consdir": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"), xtest.MustParseIA("3-ff00:0:333"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"),
+					xtest.MustParseIA("3-ff00:0:333"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -1709,17 +1753,23 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[2].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[2].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 
-				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[5].HopField)
+				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[5].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[5].HopField.Mac)
-				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[4].HopField)
+				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[4].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[4].HopField.Mac)
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				// Reset SegID to original value
 				ret := toMsg(t, spkt, dpath)
 				return ret
@@ -1817,7 +1867,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		"six hops brtransit xover mixed consdir": {
 			// up segment non consdir, down segment consdir
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"), xtest.MustParseIA("3-ff00:0:333"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"),
+					xtest.MustParseIA("3-ff00:0:333"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -1848,17 +1899,23 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[2].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[2].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[3].HopField.Mac)
-				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[4].HopField)
+				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[4].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[4].HopField.Mac)
-				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[5].HopField)
+				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[5].HopField)
 				// Reset SegID to original value
 				dpath.InfoFields[1].SegID = 0x222
 				ret := toMsg(t, spkt, dpath)
@@ -1930,7 +1987,8 @@ func TestHbirdPacketPath(t *testing.T) {
 			// two crossovers, first crossover is brtransit, second one is astransit
 			// core segment is non consdir
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:113"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:113"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -1962,17 +2020,23 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[3].HopField.Mac)
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
 
-				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[2], dpath.HopFields[4].HopField)
+				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[2],
+					dpath.HopFields[4].HopField)
 				dpath.InfoFields[2].UpdateSegID(dpath.HopFields[4].HopField.Mac)
-				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[2], dpath.HopFields[5].HopField)
+				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[2],
+					dpath.HopFields[5].HopField)
 				// Reset SegID to original value
 				dpath.InfoFields[0].SegID = 0x111
 				dpath.InfoFields[2].SegID = 0x333
@@ -2040,7 +2104,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"three hops peering brtransit consdir": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:113"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:113"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -2068,11 +2133,15 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[1].HopField)
-				// No Segment update here as the second hop of a peering path uses the same segID as it's following hop
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[1].HopField)
+				// No Segment update here as the second hop of a peering path
+				// Uses the same segID as it's following hop
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
 
 				ret := toMsg(t, spkt, dpath)
 				return ret
@@ -2114,7 +2183,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"three hops peering brtransit non consdir": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:113"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:113"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -2142,12 +2212,16 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[2].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[1].HopField)
-				// No Segment update here as the second hop of a peering path uses the same segID as it's following hop
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[1].HopField)
+				// No Segment update here as the second hop of a peering path
+				// Uses the same segID as it's following hop
 
 				ret := toMsg(t, spkt, dpath)
 				return ret
@@ -2189,7 +2263,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"four hops peering astransit consdir": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:113"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:113"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -2218,13 +2293,18 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
-				// No Segment update here as the second hop of a peering path uses the same segID as it's following hop
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
+				// No Segment update here
+				// the second hop of a peering path uses the same segID as it's following hop
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				// reset segID
 				dpath.InfoFields[0].SegID = 0x111
 
@@ -2305,7 +2385,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"four hops peering astransit non consdir": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:113"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:113"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -2334,13 +2415,18 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
-				// No Segment update here as the second hop of a peering path uses the same segID as it's following hop
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
+				// No Segment update here
+				// the second hop of a peering path uses the same segID as it's following hop
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[3].HopField.Mac)
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
 
 				ret := toMsg(t, spkt, dpath)
 				return ret
@@ -2419,7 +2505,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"two hops consdir flyovers": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"), xtest.MustParseIA("1-ff00:0:110"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"),
+					xtest.MustParseIA("1-ff00:0:110"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -2440,14 +2527,18 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 
 					HopFields: []hummingbird.FlyoverHopField{
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 01, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 01, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				// add flyover macs
 				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 40,
 					dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
@@ -2487,7 +2578,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"two hops non consdir flyovers": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:111"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:111"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -2508,14 +2600,18 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 
 					HopFields: []hummingbird.FlyoverHopField{
-						{Flyover: true, HopField: path.HopField{ConsIngress: 01, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 01, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				// aggregate macs
 				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 1,
 					dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
@@ -2554,7 +2650,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"six hops astransit xover consdir flyovers": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"), xtest.MustParseIA("3-ff00:0:333"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"),
+					xtest.MustParseIA("3-ff00:0:333"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -2576,26 +2673,37 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 
 					HopFields: []hummingbird.FlyoverHopField{
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 31}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 5, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 31},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 5, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 7}},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 11, ConsEgress: 8}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 11, ConsEgress: 8},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 3, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[2].HopField)
 
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[3].HopField.Mac)
-				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[4].HopField)
+				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[4].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[4].HopField.Mac)
-				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[5].HopField)
+				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[5].HopField)
 				// Reset SegID to original value
 				dpath.InfoFields[0].SegID = 0x111
 				dpath.InfoFields[1].SegID = 0x222
@@ -2705,7 +2813,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"six hops astransit xover non consdir flyovers": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"), xtest.MustParseIA("3-ff00:0:333"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"),
+					xtest.MustParseIA("3-ff00:0:333"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -2727,26 +2836,37 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 
 					HopFields: []hummingbird.FlyoverHopField{
-						{Flyover: true, HopField: path.HopField{ConsIngress: 40, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 31, ConsEgress: 1}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 5}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 40, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 31, ConsEgress: 1},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 5},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 						{HopField: path.HopField{ConsIngress: 7, ConsEgress: 0}},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 8, ConsEgress: 11}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 3}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 8, ConsEgress: 11},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 3},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[2].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[2].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 
-				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[5].HopField)
+				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[5].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[5].HopField.Mac)
-				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[4].HopField)
+				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[4].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[4].HopField.Mac)
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				// aggregate with flyover macs
 				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 40,
 					dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
@@ -2854,7 +2974,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		"six hops brtransit xover mixed consdir flyovers": {
 			// up segment non consdir, down segment consdir
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"), xtest.MustParseIA("3-ff00:0:333"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:111"),
+					xtest.MustParseIA("3-ff00:0:333"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -2876,26 +2997,37 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 
 					HopFields: []hummingbird.FlyoverHopField{
-						{Flyover: true, HopField: path.HopField{ConsIngress: 40, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 31, ConsEgress: 1}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 5}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 40, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 31, ConsEgress: 1},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 5},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 7}},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 11, ConsEgress: 8}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 11, ConsEgress: 8},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 3, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[2].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[2].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[3].HopField.Mac)
-				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[4].HopField)
+				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[4].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[4].HopField.Mac)
-				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[5].HopField)
+				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[5].HopField)
 				// Reset SegID to original value
 				dpath.InfoFields[1].SegID = 0x222
 
@@ -2980,7 +3112,8 @@ func TestHbirdPacketPath(t *testing.T) {
 			// two crossovers, first crossover is brtransit, second one is astransit
 			// core segment is non consdir
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:113"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:113"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -3003,26 +3136,36 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 
 					HopFields: []hummingbird.FlyoverHopField{
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 						{HopField: path.HopField{ConsIngress: 5, ConsEgress: 0}},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 31}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 31},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 8}},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 3, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[3].HopField.Mac)
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
 
-				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[2], dpath.HopFields[4].HopField)
+				dpath.HopFields[4].HopField.Mac = computeMAC(t, key, dpath.InfoFields[2],
+					dpath.HopFields[4].HopField)
 				dpath.InfoFields[2].UpdateSegID(dpath.HopFields[4].HopField.Mac)
-				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[2], dpath.HopFields[5].HopField)
+				dpath.HopFields[5].HopField.Mac = computeMAC(t, key, dpath.InfoFields[2],
+					dpath.HopFields[5].HopField)
 				// Reset SegID to original value
 				dpath.InfoFields[0].SegID = 0x111
 				dpath.InfoFields[2].SegID = 0x333
@@ -3099,7 +3242,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"three hops peering brtransit consdir flyovers": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:113"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:113"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -3121,21 +3265,31 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 
 					HopFields: []hummingbird.FlyoverHopField{
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 5, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 5, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[1].HopField)
-				// No Segment update here as the second hop of a peering path uses the same segID as it's following hop
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[1].HopField)
+				// No Segment update here
+				// The second hop of a peering path uses the same segID as it's following hop
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
 
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 40, dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 1, 2, dpath.InfoFields[1], &dpath.HopFields[1], dpath.PathMeta)
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 5, 0, dpath.InfoFields[1], &dpath.HopFields[2], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 40,
+					dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 1, 2,
+					dpath.InfoFields[1], &dpath.HopFields[1], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 5, 0,
+					dpath.InfoFields[1], &dpath.HopFields[2], dpath.PathMeta)
 
 				ret := toMsg(t, spkt, dpath)
 				return ret
@@ -3177,7 +3331,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"three hops peering brtransit non consdir flyovers": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:113"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:113"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -3199,22 +3354,32 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 
 					HopFields: []hummingbird.FlyoverHopField{
-						{Flyover: true, HopField: path.HopField{ConsIngress: 40, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 2, ConsEgress: 1}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 5}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 40, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 2, ConsEgress: 1},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 5},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[2].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[1].HopField)
-				// No Segment update here as the second hop of a peering path uses the same segID as it's following hop
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[1].HopField)
+				// No Segment update here
+				// The second hop of a peering path uses the same segID as it's following hop
 
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 40, dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 1, 2, dpath.InfoFields[1], &dpath.HopFields[1], dpath.PathMeta)
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 5, 0, dpath.InfoFields[1], &dpath.HopFields[2], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 40,
+					dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 1, 2,
+					dpath.InfoFields[1], &dpath.HopFields[1], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 5, 0,
+					dpath.InfoFields[1], &dpath.HopFields[2], dpath.PathMeta)
 
 				ret := toMsg(t, spkt, dpath)
 				return ret
@@ -3256,7 +3421,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"four hops peering astransit consdir flyovers": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:113"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:113"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -3278,27 +3444,40 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 
 					HopFields: []hummingbird.FlyoverHopField{
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 31, ConsEgress: 7}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 5, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 40},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 31, ConsEgress: 7},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 5, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 				dpath.InfoFields[0].UpdateSegID(dpath.HopFields[0].HopField.Mac)
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
 
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
-				// No Segment update here as the second hop of a peering path uses the same segID as it's following hop
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
+				// No Segment update here
+				// The second hop of a peering path uses the same segID as it's following hop
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				// reset segID
 				dpath.InfoFields[0].SegID = 0x111
 
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 40, dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 31, 7, dpath.InfoFields[0], &dpath.HopFields[1], dpath.PathMeta)
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 1, 2, dpath.InfoFields[1], &dpath.HopFields[2], dpath.PathMeta)
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 5, 0, dpath.InfoFields[1], &dpath.HopFields[3], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 40,
+					dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 31, 7,
+					dpath.InfoFields[0], &dpath.HopFields[1], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 1, 2,
+					dpath.InfoFields[1], &dpath.HopFields[2], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 5, 0,
+					dpath.InfoFields[1], &dpath.HopFields[3], dpath.PathMeta)
 
 				ret := toMsg(t, spkt, dpath)
 				return ret
@@ -3377,7 +3556,8 @@ func TestHbirdPacketPath(t *testing.T) {
 		},
 		"four hops peering astransit non consdir flyovers": {
 			mockMsg: func() *ipv4.Message {
-				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"), xtest.MustParseIA("1-ff00:0:113"))
+				spkt := prepHbirdSlayers(xtest.MustParseIA("1-ff00:0:110"),
+					xtest.MustParseIA("1-ff00:0:113"))
 				dst := addr.MustParseHost("10.0.100.100")
 				_ = spkt.SetDstAddr(dst)
 
@@ -3399,25 +3579,38 @@ func TestHbirdPacketPath(t *testing.T) {
 					},
 
 					HopFields: []hummingbird.FlyoverHopField{
-						{Flyover: true, HopField: path.HopField{ConsIngress: 40, ConsEgress: 0}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 7, ConsEgress: 31}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 2, ConsEgress: 1}, Bw: 5, ResStartTime: 123, Duration: 304},
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 5}, Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 40, ConsEgress: 0},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 7, ConsEgress: 31},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 2, ConsEgress: 1},
+							Bw: 5, ResStartTime: 123, Duration: 304},
+						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 5},
+							Bw: 5, ResStartTime: 123, Duration: 304},
 					},
 				}
 				// Compute MACs and increase SegID while doing so
-				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
-				// No Segment update here as the second hop of a peering path uses the same segID as it's following hop
-				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0], dpath.HopFields[0].HopField)
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
+				// No Segment update here
+				// The second hop of a peering path uses the same segID as it's following hop
+				dpath.HopFields[0].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[0].HopField)
 
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[3].HopField)
 				dpath.InfoFields[1].UpdateSegID(dpath.HopFields[3].HopField.Mac)
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1], dpath.HopFields[2].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
+					dpath.HopFields[2].HopField)
 
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 40, dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 31, 7, dpath.InfoFields[0], &dpath.HopFields[1], dpath.PathMeta)
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 1, 2, dpath.InfoFields[1], &dpath.HopFields[2], dpath.PathMeta)
-				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 5, 0, dpath.InfoFields[1], &dpath.HopFields[3], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 0, 40,
+					dpath.InfoFields[0], &dpath.HopFields[0], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 31, 7,
+					dpath.InfoFields[0], &dpath.HopFields[1], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 1, 2,
+					dpath.InfoFields[1], &dpath.HopFields[2], dpath.PathMeta)
+				aggregateOntoScionMac(t, sv, spkt.DstIA, spkt.PayloadLen, 5, 0,
+					dpath.InfoFields[1], &dpath.HopFields[3], dpath.PathMeta)
 
 				ret := toMsg(t, spkt, dpath)
 				return ret
@@ -3537,7 +3730,8 @@ func TestBandwidthCheck(t *testing.T) {
 	spkt, dpath := prepHbirdMsg(now)
 	dpath.HopFields = []hummingbird.FlyoverHopField{
 		{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
-		{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, Bw: 2, ResStartTime: 123, Duration: 304},
+		{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2},
+			Bw: 2, ResStartTime: 123, Duration: 304},
 		{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
 	}
 	dpath.Base.PathMeta.SegLen[0] = 11
@@ -3545,7 +3739,8 @@ func TestBandwidthCheck(t *testing.T) {
 	dpath.Base.NumLines = 11
 
 	spkt.PayloadLen = 120
-	dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA, spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
+	dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+		spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
 
 	msg := toLongMsg(t, spkt, dpath)
 
@@ -3629,7 +3824,8 @@ func prepHbirdSlayers(src, dst addr.IA) *slayers.SCION {
 	return spkt
 }
 
-func computeAggregateMac(t *testing.T, key, sv []byte, dst addr.IA, l uint16, info path.InfoField, hf hummingbird.FlyoverHopField, meta hummingbird.MetaHdr) [path.MacLen]byte {
+func computeAggregateMac(t *testing.T, key, sv []byte, dst addr.IA, l uint16, info path.InfoField,
+	hf hummingbird.FlyoverHopField, meta hummingbird.MetaHdr) [path.MacLen]byte {
 
 	scionMac := computeMAC(t, key, info, hf.HopField)
 
@@ -3655,7 +3851,9 @@ func computeAggregateMac(t *testing.T, key, sv []byte, dst addr.IA, l uint16, in
 	return scionMac
 }
 
-func computeAggregateMacXover(t *testing.T, key, sv []byte, dst addr.IA, l, hin, heg uint16, info path.InfoField, hf hummingbird.FlyoverHopField, meta hummingbird.MetaHdr) [path.MacLen]byte {
+func computeAggregateMacXover(t *testing.T, key, sv []byte, dst addr.IA, l, hin, heg uint16,
+	info path.InfoField, hf hummingbird.FlyoverHopField,
+	meta hummingbird.MetaHdr) [path.MacLen]byte {
 
 	scionMac := computeMAC(t, key, info, hf.HopField)
 
@@ -3682,7 +3880,8 @@ func computeAggregateMacXover(t *testing.T, key, sv []byte, dst addr.IA, l, hin,
 }
 
 // Computes flyovermac and aggregates it to existing mac in hopfield
-func aggregateOntoScionMac(t *testing.T, sv []byte, dst addr.IA, l, hin, heg uint16, info path.InfoField, hf *hummingbird.FlyoverHopField, meta hummingbird.MetaHdr) {
+func aggregateOntoScionMac(t *testing.T, sv []byte, dst addr.IA, l, hin, heg uint16,
+	info path.InfoField, hf *hummingbird.FlyoverHopField, meta hummingbird.MetaHdr) {
 	block, err := aes.NewCipher(sv)
 	require.NoError(t, err)
 	ingress, egress := hin, heg

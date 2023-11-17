@@ -146,7 +146,7 @@ func TestCheckReservationExpiry(t *testing.T) {
 	now := uint32(tnow.Unix())
 
 	// hop1: first reservation expired, second ok
-	// hop2: first reservation expired, second not started, third expired (input 5 as tolerance), fourth ok
+	// hop2: first reservation expired, second not started, third expired, fourth ok
 	// hop3: first not yet valid, second expired
 	input := []hummingbird.Reservation{
 		{

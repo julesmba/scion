@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 )
 
 func TestIncPath(t *testing.T) {

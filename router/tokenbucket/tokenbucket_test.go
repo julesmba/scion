@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scionproto/scion/router/tokenbucket"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/scionproto/scion/router/tokenbucket"
 )
 
 type entry struct {

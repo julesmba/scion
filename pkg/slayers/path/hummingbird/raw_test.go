@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/scionproto/scion/pkg/slayers/path"
-	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/scionproto/scion/pkg/slayers/path"
+	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 )
 
 var emptyRawTestPath = &hummingbird.Raw{

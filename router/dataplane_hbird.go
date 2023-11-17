@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/gopacket"
+
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/serrors"

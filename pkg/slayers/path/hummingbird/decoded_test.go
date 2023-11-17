@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/scionproto/scion/pkg/slayers/path"
 	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
-	"github.com/stretchr/testify/assert"
 )
 
 var testInfoFields = []path.InfoField{
