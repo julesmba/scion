@@ -177,6 +177,56 @@ func TestLastHop(t *testing.T) {
 	}
 }
 
+func TestSetHopfield(t *testing.T) {
+	hop1 := hummingbird.FlyoverHopField{
+		HopField: path.HopField{
+			ConsIngress: 0,
+			ConsEgress:  1,
+		},
+	}
+	hop2 := hummingbird.FlyoverHopField{
+		HopField: path.HopField{
+			ConsIngress: 2,
+			ConsEgress:  3,
+		},
+	}
+	hop3 := hummingbird.FlyoverHopField{
+		Flyover: true,
+		HopField: path.HopField{
+			ConsIngress: 1,
+			ConsEgress:  0,
+		},
+		ResID:        13,
+		Bw:           6,
+		ResStartTime: 0,
+		Duration:     45,
+	}
+	expected := decodedHbirdTestPath
+	expected.HopFields[0] = hop1
+	expected.HopFields[0].Flyover = true
+	expected.HopFields[1] = hop2
+	expected.HopFields[3] = hop3
+
+	buffer := make([]byte, expected.Len())
+	expected.SerializeTo(buffer)
+
+	testPath := rawHbirdTestPath
+
+	err := testPath.SetHopField(hop1, 0)
+	assert.NoError(t, err)
+
+	err = testPath.SetHopField(hop2, 5)
+	assert.NoError(t, err)
+
+	err = testPath.SetHopField(hop3, 11)
+	assert.NoError(t, err)
+
+	result, err := testPath.ToDecoded()
+
+	assert.NoError(t, err)
+	require.Equal(t, expected, result)
+}
+
 func mkRawHbirdPath(t *testing.T, pcase hbirdPathCase, infIdx, hopIdx uint8) *hummingbird.Raw {
 	t.Helper()
 	decoded := mkDecodedHbirdPath(t, pcase, infIdx, hopIdx)
