@@ -21,8 +21,8 @@ import (
 	"github.com/scionproto/scion/router/tokenbucket"
 )
 
-// SetSecretValue sets the key for the PRF function used to compute the Hummingbird Auth Key
-func (d *DataPlane) SetSecretValue(key []byte) error {
+// SetHbirdKey sets the key for the PRF function used to compute the Hummingbird Auth Key
+func (d *DataPlane) SetHbirdKey(key []byte) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	if d.running {
@@ -441,7 +441,6 @@ func (p *scionPacketProcessor) deAggregateMac() (processResult, error) {
 	}
 	copy(p.hopField.Mac[:], p.cachedMac[:path.MacLen])
 	if err := p.hbirdPath.ReplaceCurrentMac(p.cachedMac); err != nil {
-		//TODO: what SCMP packet should be returned here? Is that even necessary?
 		log.Debug("Failed to replace MAC after de-aggregation", "error", err.Error())
 		return processResult{}, serrors.Join(err, serrors.New("Mac replacement failed"))
 	}

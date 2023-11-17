@@ -27,21 +27,21 @@ func TestDataPlaneSetSecretValue(t *testing.T) {
 	t.Run("fails after serve", func(t *testing.T) {
 		d := &router.DataPlane{}
 		d.FakeStart()
-		assert.Error(t, d.SetSecretValue([]byte("dummy")))
+		assert.Error(t, d.SetHbirdKey([]byte("dummy")))
 	})
 	t.Run("setting nil value is not allowed", func(t *testing.T) {
 		d := &router.DataPlane{}
 		d.FakeStart()
-		assert.Error(t, d.SetSecretValue(nil))
+		assert.Error(t, d.SetHbirdKey(nil))
 	})
 	t.Run("single set works", func(t *testing.T) {
 		d := &router.DataPlane{}
-		assert.NoError(t, d.SetSecretValue([]byte("dummy key xxxxxx")))
+		assert.NoError(t, d.SetHbirdKey([]byte("dummy key xxxxxx")))
 	})
 	t.Run("double set fails", func(t *testing.T) {
 		d := &router.DataPlane{}
-		assert.NoError(t, d.SetSecretValue([]byte("dummy key xxxxxx")))
-		assert.Error(t, d.SetSecretValue([]byte("dummy key xxxxxx")))
+		assert.NoError(t, d.SetHbirdKey([]byte("dummy key xxxxxx")))
+		assert.Error(t, d.SetHbirdKey([]byte("dummy key xxxxxx")))
 	})
 }
 

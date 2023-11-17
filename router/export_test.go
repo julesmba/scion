@@ -62,7 +62,7 @@ func NewDP(
 	if err := dp.SetKey(key); err != nil {
 		panic(err)
 	}
-	if err := dp.SetSecretValue(sv); err != nil {
+	if err := dp.SetHbirdKey(sv); err != nil {
 		panic(err)
 	}
 	return dp

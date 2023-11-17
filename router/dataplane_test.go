@@ -261,7 +261,7 @@ func TestDataPlaneRun(t *testing.T) {
 
 				_ = ret.SetIA(local)
 				_ = ret.SetKey(key)
-				_ = ret.SetSecretValue(key)
+				_ = ret.SetHbirdKey(key)
 				return ret
 			},
 		},
@@ -337,7 +337,7 @@ func TestDataPlaneRun(t *testing.T) {
 
 				local := &net.UDPAddr{IP: net.ParseIP("10.0.200.100").To4()}
 				_ = ret.SetKey([]byte("randomkeyformacs"))
-				_ = ret.SetSecretValue([]byte("randomsvformacss"))
+				_ = ret.SetHbirdKey([]byte("randomsvformacss"))
 				_ = ret.AddInternalInterface(mInternal, net.IP{})
 				for remote, ifIDs := range routers {
 					for _, ifID := range ifIDs {
@@ -394,7 +394,7 @@ func TestDataPlaneRun(t *testing.T) {
 				mInternal.EXPECT().ReadBatch(gomock.Any()).Return(0, nil).AnyTimes()
 
 				_ = ret.SetKey([]byte("randomkeyformacs"))
-				_ = ret.SetSecretValue([]byte("randomsvformacss"))
+				_ = ret.SetHbirdKey([]byte("randomsvformacss"))
 				_ = ret.AddInternalInterface(mInternal, net.IP{})
 				_ = ret.AddNextHop(3, localAddr)
 				_ = ret.AddNextHopBFD(3, localAddr, remoteAddr, bfd(), "")
@@ -449,7 +449,7 @@ func TestDataPlaneRun(t *testing.T) {
 					Addr: &net.UDPAddr{IP: net.ParseIP("10.0.0.200")},
 				}
 				_ = ret.SetKey([]byte("randomkeyformacs"))
-				_ = ret.SetSecretValue([]byte("randomsvformacss"))
+				_ = ret.SetHbirdKey([]byte("randomsvformacss"))
 				_ = ret.AddInternalInterface(mInternal, net.IP{})
 				_ = ret.AddExternalInterface(ifID, mExternal)
 				_ = ret.AddExternalInterfaceBFD(ifID, mExternal, local, remote, bfd())
@@ -530,7 +530,7 @@ func TestDataPlaneRun(t *testing.T) {
 					Addr: &net.UDPAddr{IP: net.ParseIP("10.0.0.200")},
 				}
 				_ = ret.SetKey([]byte("randomkeyformacs"))
-				_ = ret.SetSecretValue([]byte("randomsvformacss"))
+				_ = ret.SetHbirdKey([]byte("randomsvformacss"))
 				_ = ret.AddInternalInterface(mInternal, net.IP{})
 				_ = ret.AddExternalInterface(1, mExternal)
 				_ = ret.AddExternalInterfaceBFD(1, mExternal, local, remote, bfd())
