@@ -1020,6 +1020,7 @@ func (p *scionPacketProcessor) reset() error {
 	p.hbirdPath = nil
 	p.flyoverField = hummingbird.FlyoverHopField{}
 	p.hasPriority = false
+	p.isFlyoverXover = false
 
 	if err := p.buffer.Clear(); err != nil {
 		return serrors.WrapStr("Failed to clear buffer", err)
@@ -1231,6 +1232,8 @@ type scionPacketProcessor struct {
 	flyoverField hummingbird.FlyoverHopField
 	// hasPriority indicates whether this packet has forwarding priority
 	hasPriority bool
+	// isFlyoverXover is true if the current hop has a flyover and a cross-over is performed
+	isFlyoverXover bool
 	// hbirdXkbuffer avoid allocating memory during aes computation for hummingbird flyover mac
 	hbirdXkbuffer []uint32
 

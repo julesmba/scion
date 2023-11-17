@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/subtle"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
@@ -186,10 +185,7 @@ func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 	scionMac := path.FullMAC(p.mac, p.infoField, p.hopField, p.macInputBuffer[:path.MACBufferSize])
 	// Aggregate MACS and verify if necessary
 	if p.flyoverField.Flyover {
-		binary.BigEndian.PutUint32(flyoverMac[0:4],
-			binary.BigEndian.Uint32(scionMac[0:4])^binary.BigEndian.Uint32(flyoverMac[0:4]))
-		binary.BigEndian.PutUint16(flyoverMac[4:6],
-			binary.BigEndian.Uint16(scionMac[4:6])^binary.BigEndian.Uint16(flyoverMac[4:6]))
+		macXor(flyoverMac[:], scionMac[:], flyoverMac[:])
 
 		verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen],
 			flyoverMac[:path.MacLen])
@@ -221,8 +217,12 @@ func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 		}
 	}
 	// Add the full MAC to the SCION packet processor,
-	// such that EPIC and hummingbird mac de-aggregation do not need to recalculate it.
-	p.cachedMac = scionMac
+	// such that hummingbird mac de-aggregation do not need to recalculate it.
+	// Do not overwrite cachedmac after doing xover, as it may contain a  flyovermac
+	if !p.effectiveXover {
+		p.cachedMac = scionMac
+	}
+
 	if verified == 0 {
 		slowPathRequest := slowPathRequest{
 			scmpType: slayers.SCMPTypeParameterProblem,
@@ -440,6 +440,15 @@ func (p *scionPacketProcessor) updateHbirdNonConsDirIngressSegID() error {
 	return nil
 }
 
+// Xors a and b and writes the result into d.
+//
+// Expects all arguments to have a length of macLen
+func macXor(d, a, b []byte) {
+	for i := 0; i < path.MacLen; i++ {
+		d[i] = a[i] ^ b[i]
+	}
+}
+
 func (p *scionPacketProcessor) deAggregateMac() (processResult, error) {
 	if !p.flyoverField.Flyover {
 		return processResult{}, nil
@@ -452,32 +461,37 @@ func (p *scionPacketProcessor) deAggregateMac() (processResult, error) {
 	return processResult{}, nil
 }
 
+// de-aggregates mac and stores the flyovermac part of the mac in cachedMac
+func (p *scionPacketProcessor) deAggregateAndCacheMac() (processResult, error) {
+	if !p.flyoverField.Flyover {
+		return processResult{}, nil
+	}
+	// obtain flyoverMac and buffer in macInputBuffer
+	// such that it is not overwritten by the following standard mac computation
+	macXor(p.macInputBuffer[path.MACBufferSize:], p.cachedMac, p.hopField.Mac[:])
+	// deaggregate Mac
+	copy(p.hopField.Mac[:], p.cachedMac[:path.MacLen])
+	if err := p.hbirdPath.ReplaceCurrentMac(p.cachedMac); err != nil {
+		log.Debug("Failed to replace MAC after de-aggregation", "error", err.Error())
+		return processResult{}, serrors.Join(err, serrors.New("Mac replacement failed"))
+	}
+	// set cachedMac to the buffered flyoverMac
+	p.cachedMac = p.macInputBuffer[path.MACBufferSize : path.MACBufferSize+path.MacLen]
+	return processResult{}, nil
+}
+
 func (p *scionPacketProcessor) doFlyoverXover() error {
 	// Move flyoverhopfield to next hop for benefit of egress router
 	if err := p.hbirdPath.DoFlyoverXover(); err != nil {
 		return err
 	}
 
-	// Buffer flyover part of current mac by xoring it with cached scionMac
-	binary.BigEndian.PutUint32(p.macInputBuffer[6:10],
-		binary.BigEndian.Uint32(p.flyoverField.HopField.Mac[0:4])^
-			binary.BigEndian.Uint32(p.cachedMac[0:4]))
-	p.macInputBuffer[10] = p.flyoverField.HopField.Mac[4] ^ p.cachedMac[4]
-	p.macInputBuffer[11] = p.flyoverField.HopField.Mac[5] ^ p.cachedMac[5]
-	// deaggregate current mac
-	copy(p.hopField.Mac[:], p.cachedMac[0:6])
-	if err := p.hbirdPath.ReplaceCurrentMac(p.cachedMac); err != nil {
-		return err
-	}
-	// Aggregate Mac of second hop
-	mac, err := p.hbirdPath.GetMac(int(p.hbirdPath.PathMeta.CurrHF) + hummingbird.HopLines)
+	// Aggregate mac of current hopfield with buffered flyoverMac
+	mac, err := p.hbirdPath.GetMac(int(p.hbirdPath.PathMeta.CurrHF))
 	if err != nil {
 		return err
 	}
-	binary.BigEndian.PutUint32(mac[0:4],
-		binary.BigEndian.Uint32(mac[0:4])^binary.BigEndian.Uint32(p.macInputBuffer[6:10]))
-	mac[4] ^= p.macInputBuffer[10]
-	mac[5] ^= p.macInputBuffer[11]
+	macXor(mac, mac, p.cachedMac)
 	return nil
 }
 
@@ -492,13 +506,15 @@ func (p *scionPacketProcessor) reverseFlyoverXover() error {
 
 func (p *scionPacketProcessor) doHbirdXover() (processResult, error) {
 	p.effectiveXover = true
-
+	inc := hummingbird.HopLines
 	if p.flyoverField.Flyover {
-		if err := p.doFlyoverXover(); err != nil {
-			return processResult{}, err
+		p.isFlyoverXover = true
+		inc = hummingbird.FlyoverLines
+		if r, err := p.deAggregateAndCacheMac(); err != nil {
+			return r, err
 		}
 	}
-	if err := p.hbirdPath.IncPath(hummingbird.HopLines); err != nil {
+	if err := p.hbirdPath.IncPath(inc); err != nil {
 		// TODO parameter problem invalid path
 		return processResult{}, serrors.WrapStr("incrementing path", err)
 	}
@@ -513,7 +529,6 @@ func (p *scionPacketProcessor) doHbirdXover() (processResult, error) {
 		return processResult{}, err
 	}
 	p.hopField = p.flyoverField.HopField
-	//TODO: modify method once we have definite design for flyover Xover
 	return processResult{}, nil
 }
 
@@ -574,9 +589,6 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 			return r, err
 		}
 	}
-	// if err := p.updateHbirdNonConsDirIngressSegID(); err != nil {
-	// 	return processResult{}, err
-	// }
 	if r, err := p.verifyCurrentHbirdMAC(); err != nil {
 		return r, err
 	}
@@ -611,18 +623,11 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 		if r, err := p.validateHopExpiry(); err != nil {
 			return r, serrors.WithCtx(err, "info", "after xover")
 		}
-		// verify the new block
-		if p.flyoverField.Flyover {
-			// TODO: can possibly skip this once we modify flyover at Xover implementation.
-			// Will need to aggregate new MAC though
-			if r, err := p.verifyCurrentHbirdMAC(); err != nil {
-				return r, err
-			}
-		} else {
-			if r, err := p.verifyCurrentMAC(); err != nil {
-				return r, err
-			}
+		// verify the new hopField
+		if r, err := p.verifyCurrentHbirdMAC(); err != nil {
+			return r, err
 		}
+
 		if p.flyoverField.Flyover {
 			//TODO: can skip repeating those if/once moving previous flyover at Xover is confirmed
 			if r, err := p.validateReservationExpiry(); err != nil {
@@ -651,7 +656,8 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 		if r, err := p.deAggregateMac(); err != nil {
 			return r, err
 		}
-		if p.flyoverField.Flyover && p.hbirdPath.IsFirstHopAfterXover() && !p.peering {
+		if p.flyoverField.Flyover && p.hbirdPath.IsFirstHopAfterXover() &&
+			!p.effectiveXover && !p.peering {
 			if err := p.reverseFlyoverXover(); err != nil {
 				return processResult{}, err
 			}
@@ -663,6 +669,11 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 	}
 	// ASTransit: pkts leaving from another AS BR.
 	if a, ok := p.d.internalNextHops[egressID]; ok {
+		if p.isFlyoverXover {
+			if err := p.doFlyoverXover(); err != nil {
+				return processResult{}, err
+			}
+		}
 		return processResult{OutAddr: a, OutPkt: p.rawPkt}, nil
 	}
 	errCode := slayers.SCMPCodeUnknownHopFieldEgress
