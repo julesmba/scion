@@ -235,11 +235,11 @@ func TestProcessHbirdPacket(t *testing.T) {
 				return router.NewDP(nil,
 					map[uint16]topology.LinkType{
 						51: topology.Child,
-						3:  topology.Core,
+						31: topology.Core,
 					},
 					mock_router.NewMockBatchConn(ctrl),
 					map[uint16]*net.UDPAddr{
-						uint16(3): {IP: net.ParseIP("10.0.200.200").To4(), Port: 30043},
+						uint16(51): {IP: net.ParseIP("10.0.200.200").To4(), Port: 30043},
 					}, nil, xtest.MustParseIA("1-ff00:0:110"), nil, key, sv)
 			},
 			mockMsg: func(afterProcessing bool) *ipv4.Message {
@@ -247,7 +247,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				dpath := &hummingbird.Decoded{
 					Base: hummingbird.Base{
 						PathMeta: hummingbird.MetaHdr{
-							CurrHF: 6,
+							CurrHF: 3,
 							SegLen: [3]uint8{6, 6, 0},
 						},
 						NumINF:   2,
@@ -260,19 +260,19 @@ func TestProcessHbirdPacket(t *testing.T) {
 						{SegID: 0x222, ConsDir: false, Timestamp: util.TimeToSecs(now)},
 					},
 					HopFields: []hummingbird.FlyoverHopField{
-						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 1}},  // IA 110
-						{HopField: path.HopField{ConsIngress: 31, ConsEgress: 0}}, // Src
-						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 51}}, // Dst
-						{HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}},  // IA 110
+						{HopField: path.HopField{ConsIngress: 1, ConsEgress: 0}},
+						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 31}},
+						{HopField: path.HopField{ConsIngress: 51, ConsEgress: 0}},
+						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 3}},
 					},
 				}
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+				dpath.HopFields[1].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
+					dpath.HopFields[1].HopField)
+				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
 					dpath.HopFields[2].HopField)
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
-					dpath.HopFields[3].HopField)
 
 				if !afterProcessing {
-					dpath.InfoFields[0].UpdateSegID(dpath.HopFields[2].HopField.Mac)
+					dpath.InfoFields[0].UpdateSegID(dpath.HopFields[1].HopField.Mac)
 					return toMsg(t, spkt, dpath)
 				}
 				require.NoError(t, dpath.IncPath(hummingbird.HopLines))
@@ -281,7 +281,7 @@ func TestProcessHbirdPacket(t *testing.T) {
 				ret.Flags, ret.NN, ret.N, ret.OOB = 0, 0, 0, nil
 				return ret
 			},
-			srcInterface:    51,
+			srcInterface:    31,
 			egressInterface: 0,
 			assertFunc:      assert.NoError,
 		},
