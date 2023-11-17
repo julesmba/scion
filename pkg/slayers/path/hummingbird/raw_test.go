@@ -206,11 +206,12 @@ func TestSetHopfield(t *testing.T) {
 	expected.HopFields[3] = hop3
 
 	buffer := make([]byte, expected.Len())
-	expected.SerializeTo(buffer)
+	err := expected.SerializeTo(buffer)
+	assert.NoError(t, err)
 
 	testPath := rawHbirdTestPath
 
-	err := testPath.SetHopField(hop1, 0)
+	err = testPath.SetHopField(hop1, 0)
 	assert.NoError(t, err)
 
 	err = testPath.SetHopField(hop2, 5)
