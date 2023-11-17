@@ -200,3 +200,29 @@ func BenchmarkFlyoverMac(b *testing.B) {
 		hummingbird.FullFlyoverMac(ak, dstIA, pktlen, resStartTs, highResTs, buffer, xkbuffer)
 	}
 }
+
+// Benchmark of the FLyover Mac if we use library code only
+// Without using the assembly code in the asm_* files
+func BenchmarkFlyoverMacLib(b *testing.B) {
+	ak := []byte{0x7e, 0x61, 0x4, 0x91, 0x30, 0x6b, 0x95, 0xec, 0xb5, 0x75, 0xc6, 0xe9,
+		0x4c, 0x5a, 0x89, 0x84}
+	var dstIA addr.IA = 326
+	var pktlen uint16 = 23
+	var resStartTs uint16 = 1234
+	var highResTs uint32 = 4321
+	buffer := make([]byte, 16)
+
+	b.ResetTimer()
+	// Compute expected output based on library cbc-mac implementation
+	for i := 0; i < b.N; i++ {
+		binary.BigEndian.PutUint64(buffer[0:8], uint64(dstIA))
+		binary.BigEndian.PutUint16(buffer[8:10], pktlen)
+		binary.BigEndian.PutUint16(buffer[10:12], resStartTs)
+		binary.BigEndian.PutUint32(buffer[12:16], highResTs)
+		block, err := aes.NewCipher(ak)
+		if err != nil {
+			require.Fail(b, err.Error())
+		}
+		block.Encrypt(buffer[:], buffer[:])
+	}
+}

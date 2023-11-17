@@ -10,6 +10,22 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 )
 
+// The FullFlyoverMac makes use of the assembly code in the asm_* files
+// There are two main, related, reasons for that.
+// First, the aes key expansion performed by these assembly files is
+// much faster than what the library code does.
+// BenchmarkFlyoverMac and BenchmarkFlyoverMacLib in mac_test.go show the difference
+//
+// Second, the library implementation of the aes key expansion performs calls to make()
+// and allocates memory, which we would like to avoid
+// This is also the main reason why the direct call to assembly is much faster
+//
+// A full implementation of aes written in go only without memory allocations
+// has been attempted, but turned out to not be much more efficient than
+// the library implementation.
+// This is expectedt to be due to the fact that a go only implementation of aes
+// is unable to make use of hardware accelerated aes instructions.
+
 // defined in asm_* assembly files
 
 //go:noescape
