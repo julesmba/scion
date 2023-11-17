@@ -42,8 +42,6 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 	if err := s.Base.DecodeFromBytes(data); err != nil {
 		return err
 	}
-	// fmt.Printf("s: %v\n", s)
-	// fmt.Print(s.Len())
 	if minLen := s.Len(); len(data) < minLen {
 		return serrors.New("DecodedPath raw too short", "expected", minLen, "actual", len(data))
 	}
@@ -56,7 +54,6 @@ func (s *Decoded) DecodeFromBytes(data []byte) error {
 		}
 		offset += path.InfoLen
 	}
-
 	s.HopFields = make([]path.HopField, s.NumHops)
 	for i := 0; i < s.NumHops; i++ {
 		if err := s.HopFields[i].DecodeFromBytes(data[offset : offset+path.HopLen]); err != nil {
@@ -74,12 +71,10 @@ func (s *Decoded) SerializeTo(b []byte) error {
 		return serrors.New("buffer too small to serialize path.", "expected", s.Len(),
 			"actual", len(b))
 	}
-	var offset int
 	if err := s.PathMeta.SerializeTo(b[:MetaLen]); err != nil {
 		return err
 	}
-	offset = MetaLen
-
+	offset := MetaLen
 	for _, info := range s.InfoFields {
 		if err := info.SerializeTo(b[offset : offset+path.InfoLen]); err != nil {
 			return err
@@ -91,13 +86,11 @@ func (s *Decoded) SerializeTo(b []byte) error {
 			return err
 		}
 		offset += path.HopLen
-
 	}
 	return nil
 }
 
 // Reverse reverses a SCION path.
-// Removes all reservations from a Hummingbird path, as these are not bidirectional
 func (s *Decoded) Reverse() (path.Path, error) {
 	if s.NumINF == 0 {
 		return nil, serrors.New("empty decoded path is invalid and cannot be reversed")
@@ -113,12 +106,13 @@ func (s *Decoded) Reverse() (path.Path, error) {
 		info.ConsDir = !info.ConsDir
 	}
 	// Reverse order of hop fields
-	for i, j := 0, len(s.HopFields)-1; i < j; i, j = i+1, j-1 {
+	for i, j := 0, s.NumHops-1; i < j; i, j = i+1, j-1 {
 		s.HopFields[i], s.HopFields[j] = s.HopFields[j], s.HopFields[i]
 	}
 	// Update CurrINF and CurrHF and SegLens
 	s.PathMeta.CurrINF = uint8(s.NumINF) - s.PathMeta.CurrINF - 1
 	s.PathMeta.CurrHF = uint8(s.NumHops) - s.PathMeta.CurrHF - 1
+
 	return s, nil
 }
 

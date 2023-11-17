@@ -65,7 +65,7 @@ func TestRawReverseHbird(t *testing.T) {
 		for i := range tc.inIdxs {
 			i := i
 			t.Run(fmt.Sprintf("%s case %d", name, i+1), func(t *testing.T) {
-				//t.Parallel()
+				t.Parallel()
 				input := mkRawHbirdPath(t, tc.input, uint8(tc.inIdxs[i][0]),
 					uint8(tc.inIdxs[i][1]))
 				want := mkRawHbirdPath(t, tc.want, uint8(tc.wantIdxs[i][0]),
@@ -160,8 +160,6 @@ func TestGetHbirdHopField(t *testing.T) {
 		})
 	}
 }
-
-//TODO: SetHopField test
 
 func TestLastHop(t *testing.T) {
 	testCases := map[*hummingbird.Raw]bool{

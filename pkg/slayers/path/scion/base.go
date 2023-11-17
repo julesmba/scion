@@ -81,7 +81,6 @@ func (s *Base) IncPath() error {
 			"num_hops", s.NumHops)
 	}
 	s.PathMeta.CurrHF++
-
 	// Update CurrINF
 	s.PathMeta.CurrINF = s.infIndexForHF(s.PathMeta.CurrHF)
 	return nil
@@ -163,6 +162,5 @@ func (m *MetaHdr) SerializeTo(b []byte) error {
 }
 
 func (m MetaHdr) String() string {
-	return fmt.Sprintf("{CurrInf: %d, CurrHF: %d, SegLen: %v}",
-		m.CurrINF, m.CurrHF, m.SegLen)
+	return fmt.Sprintf("{CurrInf: %d, CurrHF: %d, SegLen: %v}", m.CurrINF, m.CurrHF, m.SegLen)
 }
