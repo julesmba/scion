@@ -1534,16 +1534,18 @@ func (p *scionPacketProcessor) updateNonConsDirIngressSegID() error {
 	return nil
 }
 
+// TODO: write PR for scionproto for this case distinction here (juagargi)
 func (p *scionPacketProcessor) currentInfoPointer() uint16 {
-	if p.path == nil {
+	if p.scionLayer.PathType == hummingbird.PathType {
 		return p.currentHbirdInfoPointer()
 	}
 	return uint16(slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
 		scion.MetaLen + path.InfoLen*int(p.path.PathMeta.CurrINF))
 }
 
+// TODO: write PR for scionproto for this case distinction here (juagargi)
 func (p *scionPacketProcessor) currentHopPointer() uint16 {
-	if p.path == nil {
+	if p.scionLayer.PathType == hummingbird.PathType {
 		return p.currentHbirdHopPointer()
 	}
 	return uint16(slayers.CmnHdrLen + p.scionLayer.AddrHdrLen() +
