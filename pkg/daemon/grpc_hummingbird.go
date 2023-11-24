@@ -24,14 +24,14 @@ import (
 
 func (c grpcConn) StoreFlyovers(
 	ctx context.Context,
-	flyovers []*hummingbird.FlyoverJuanDeleteme,
+	flyovers []*hummingbird.Hop ,
 ) error {
 
 	return nil
 }
 
 func (c grpcConn) ListFlyovers(ctx context.Context,
-) ([]*hummingbird.FlyoverJuanDeleteme, error) {
+) ([]*hummingbird.Hop, error) {
 
 	return nil, nil
 }

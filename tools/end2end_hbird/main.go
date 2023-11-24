@@ -313,8 +313,8 @@ func (c *client) attemptRequest(n int) bool {
 			remote.Path = path.Dataplane()
 		} else if !partial {
 			// full path with reservations
-			hbirdClient := hummingbird.HummingbirdClient{}
-			if _, err := hbirdClient.PrepareHbirdPath(path); err != nil {
+			hbirdClient, err := hummingbird.NewReservation(path)
+			if err != nil {
 				logger.Error("Error converting path to Hummingbird", "err", err)
 				return false
 			}
@@ -336,8 +336,8 @@ func (c *client) attemptRequest(n int) bool {
 			remote.Path = path.Dataplane()
 		} else {
 			//partial reservations, alternating resrved and not reserved
-			hbirdClient := hummingbird.HummingbirdClient{}
-			if _, err := hbirdClient.PrepareHbirdPath(path); err != nil {
+			hbirdClient, err := hummingbird.NewReservation(path)
+			if err != nil {
 				logger.Error("Error converting path to Hummingbird", "err", err)
 				return false
 			}

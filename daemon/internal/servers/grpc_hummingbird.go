@@ -30,7 +30,7 @@ import (
 )
 
 type HummingbirdFetcher interface {
-	ListFlyovers(ctx context.Context, owners []addr.IA) ([]*hummingbird.FlyoverJuanDeleteme, error)
+	ListFlyovers(ctx context.Context, owners []addr.IA) ([]*hummingbird.Hop, error)
 }
 
 func (s *DaemonServer) StoreFlyovers(
@@ -125,10 +125,10 @@ func (s *DaemonServer) getReservations(
 	if err != nil {
 		return nil, err
 	}
+	mFlyovers := flyoversToMap(flyovers)
 
 	// For each path, try to assign as many flyovers as possible.
 	reservations := make([]*hummingbird.ReservationJuanDeleteme, len(paths))
-	mFlyovers := flyoversToMap(flyovers)
 	for i, p := range paths {
 		flyovers, ratio := assignFlyovers(p.Meta.Interfaces, mFlyovers)
 		reservations[i] = &hummingbird.ReservationJuanDeleteme{
@@ -234,12 +234,12 @@ func linkTypeFromPB(lt sdpb.LinkType) snet.LinkType {
 // The assumption is that at most one hop field exists per triplet.
 type flyoverMapKey struct {
 	IA      addr.IA
-	Ingress common.IFIDType
-	Egress  common.IFIDType
+	Ingress uint16
+	Egress  uint16
 }
-type flyoverMap map[flyoverMapKey]*hummingbird.FlyoverJuanDeleteme
+type flyoverMap map[flyoverMapKey]*hummingbird.Hop
 
-func flyoversToMap(flyovers []*hummingbird.FlyoverJuanDeleteme) flyoverMap {
+func flyoversToMap(flyovers []*hummingbird.Hop) flyoverMap {
 	ret := make(flyoverMap)
 	for _, flyover := range flyovers {
 		k := flyoverMapKey{
@@ -263,16 +263,16 @@ func flyoversToMap(flyovers []*hummingbird.FlyoverJuanDeleteme) flyoverMap {
 func assignFlyovers(
 	hopSequence []snet.PathInterface,
 	flyovers flyoverMap,
-) ([]*hummingbird.FlyoverJuanDeleteme, float64) {
+) ([]*hummingbird.Hop, float64) {
 
-	ret := make([]*hummingbird.FlyoverJuanDeleteme, len(hopSequence))
+	ret := make([]*hummingbird.Hop, len(hopSequence))
 	flyoverExistsCount := 0
 
 	// Do the first flyover appart.
 	k := flyoverMapKey{
 		IA:      hopSequence[0].IA,
 		Ingress: 0,
-		Egress:  hopSequence[0].ID,
+		Egress:  uint16(hopSequence[0].ID),
 	}
 	ret[0] = flyovers[k]
 	if ret[0] != nil {
@@ -285,8 +285,8 @@ func assignFlyovers(
 		hop := hopSequence[i]
 		k = flyoverMapKey{
 			IA:      hop.IA,
-			Ingress: hop.ID,
-			Egress:  hopSequence[i+1].ID,
+			Ingress: uint16(hop.ID),
+			Egress:  uint16(hopSequence[i+1].ID),
 		}
 
 		// Find out if there's any flyover we can use.
@@ -299,7 +299,7 @@ func assignFlyovers(
 	// Do the last flyover.
 	k = flyoverMapKey{
 		IA:      hopSequence[len(hopSequence)-1].IA,
-		Ingress: hopSequence[len(hopSequence)-1].ID,
+		Ingress: uint16(hopSequence[len(hopSequence)-1].ID),
 		Egress:  0,
 	}
 	ret[len(ret)-1] = flyovers[k]

@@ -78,7 +78,7 @@ func TestGetReservation(t *testing.T) {
 			ctx, cancelF := context.WithDeadline(context.Background(), deadline)
 			defer cancelF()
 
-			flyoverDB := make([]*hummingbird.FlyoverJuanDeleteme, len(tc.flyoverDB))
+			flyoverDB := make([]*hummingbird.Hop, len(tc.flyoverDB))
 			for i, flyoverDesc := range tc.flyoverDB {
 				flyover := getMockFlyovers(t, flyoverDesc...)
 				require.Len(t, flyover, 1, "bad test")
@@ -158,19 +158,19 @@ func getMockScionPath(t require.TestingT, hops ...any) *path.Path {
 	return path
 }
 
-func getMockFlyovers(t require.TestingT, hops ...any) []*hummingbird.FlyoverJuanDeleteme {
+func getMockFlyovers(t require.TestingT, hops ...any) []*hummingbird.Hop {
 	// Parse hops argument.
-	flyovers := make([]*hummingbird.FlyoverJuanDeleteme, 0)
+	flyovers := make([]*hummingbird.Hop, 0)
 	for i := 0; i < len(hops); i++ {
-		var f *hummingbird.FlyoverJuanDeleteme
+		var f *hummingbird.Hop
 		if hops[i] != nil {
 			in := hops[i].(int)
 			ia := xtest.MustParseIA(hops[i+1].(string))
 			eg := hops[i+2].(int)
-			f = &hummingbird.FlyoverJuanDeleteme{
+			f = &hummingbird.Hop{
 				IA:      ia,
-				Ingress: common.IFIDType(in),
-				Egress:  common.IFIDType(eg),
+				Ingress: uint16(in),
+				Egress:  uint16(eg),
 			}
 			i += 2 // advance faster
 		}
@@ -179,22 +179,14 @@ func getMockFlyovers(t require.TestingT, hops ...any) []*hummingbird.FlyoverJuan
 	return flyovers
 }
 
-// func mockFly(t require.TestingT, in int, IA string, eg int) *hummingbird.Flyover {
-// 	return &hummingbird.Flyover{
-// 		Ingress: hummingbird.Link{IfaceID: uint64(in)},
-// 		Egress:  hummingbird.Link{IfaceID: uint64(eg)},
-// 		IA:      xtest.MustParseIA(IA),
-// 	}
-// }
-
 type mockServer struct {
-	Flyovers []*hummingbird.FlyoverJuanDeleteme
+	Flyovers []*hummingbird.Hop
 }
 
 func (m *mockServer) ListFlyovers(
 	ctx context.Context,
 	owners []addr.IA,
-) ([]*hummingbird.FlyoverJuanDeleteme, error) {
+) ([]*hummingbird.Hop, error) {
 
 	// Create a set of the requested IAs.
 	ownerMap := make(map[addr.IA]struct{})
@@ -203,7 +195,7 @@ func (m *mockServer) ListFlyovers(
 	}
 
 	// Find any flyover with any such IA and return it.
-	ret := make([]*hummingbird.FlyoverJuanDeleteme, 0)
+	ret := make([]*hummingbird.Hop, 0)
 	for _, f := range m.Flyovers {
 		if _, ok := ownerMap[f.IA]; ok {
 			ret = append(ret, f)

@@ -18,7 +18,7 @@ import "github.com/scionproto/scion/pkg/snet/path"
 
 type ReservationJuanDeleteme struct {
 	SCIONPath path.Path
-	Flyovers  []*FlyoverJuanDeleteme
+	Flyovers  []*Hop
 	Ratio     float64 // flyover/hops ratio
 }
 

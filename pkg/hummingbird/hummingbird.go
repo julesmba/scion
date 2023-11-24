@@ -18,9 +18,19 @@ import (
 	"github.com/scionproto/scion/router/control"
 )
 
-type Reservation struct {
-	// AS denotes the AS for which a reservation is valid
-	AS addr.IA
+// Describes a pair of Ingress and Egress interfaces in a specific AS
+type Hop struct {
+	// IA denotes the IA for which a reservation is valid
+	IA addr.IA
+	// Ingress is the ingress interface for the reserved hop
+	Ingress uint16
+	// Egress is the egress interface of the reserved hop
+	Egress uint16
+}
+
+type Flyover struct {
+	Hop
+
 	// ResID is the reservation ID of the reservation. It is unique PER AS
 	ResID uint32
 	// Ak is the authentication key of the reservation
@@ -34,45 +44,30 @@ type Reservation struct {
 	// EndTime is the unix timestamp at which the reservation ends.
 	// Is not strictly necessary but included for simplicity
 	EndTime uint32
-	// Ingress is the ingress interface for the reserved hop
-	Ingress uint16
-	// Egress is the egress interface of the reserved hop
-	Egress uint16
-}
-
-// Describes a pair of Ingress and Egress interfaces in a specific AS
-type Hop struct {
-	AS      addr.IA
-	Ingress uint16
-	Egress  uint16
 }
 
 type hbirdHop struct {
+	Hop
+
 	// The FlyoverHopField in the path associated to this hop
 	hopfield *hummingbird.FlyoverHopField
 	// The Index of the Segment the aboe hopfield is part of
 	infIdx int
-	// The AS this hop traverses
-	as addr.IA
-	// The ingress used by packets traversing this hop
-	ingress uint16
-	// The egress used by packets traversing this hop
-	egress uint16
 	// The reservations that can be used for this hop.
 	// The reservation at index 0 is the one used to build the path
 	// MUST be non-empty if hopfield.Flyiver == true
-	reservations []Reservation
+	reservations []Flyover
 	// The original scion mac of the corresponding hopfield
 	scionMac [6]byte
 }
 
 // Temporary cheating function until the system to request keys is available
 // return true if successful
-func cheat_auth_key(res *Reservation) (Reservation, error) {
+func cheat_auth_key(res *Flyover) (Flyover, error) {
 	// ResID is set by seller, pick random
 	res.ResID = uint32(rand.Int31() >> 10)
 
-	asstr := res.AS.String()
+	asstr := res.IA.String()
 	asstr = strings.ReplaceAll(asstr, ":", "_")
 	asstr = strings.TrimLeft(asstr, "1234567890-")
 	fpath := "gen/AS" + asstr + "/keys"
@@ -91,12 +86,12 @@ func cheat_auth_key(res *Reservation) (Reservation, error) {
 
 // Requests a reservation for each given reservation.
 // Expects AS, Bw, StartTime, EndTime, Ingress and Egress to be filled in
-func RequestReservations(rs []Reservation) {
+func RequestReservations(rs []Flyover) {
 
 }
 
 // Adds a reservation to be used for transmission
-func AddReservation(res Reservation) error {
+func AddReservation(res Flyover) error {
 	return nil
 }
 
@@ -136,7 +131,6 @@ func ConvertToHbirdPath(p snet.Path, timeStamp time.Time) (snet.Path, error) {
 }
 
 func convertSCIONToHbirdDecoded(p []byte) (hummingbird.Decoded, error) {
-
 	scionDec := scion.Decoded{}
 	if err := scionDec.DecodeFromBytes(p); err != nil {
 		return hummingbird.Decoded{}, err
@@ -147,6 +141,8 @@ func convertSCIONToHbirdDecoded(p []byte) (hummingbird.Decoded, error) {
 	return hbirdDec, nil
 }
 
+// HummingbirdClient represents a possibly partially reserved path, with zero or more flyovers.
+// TODO(juagargi) refactor functionality in two types: Reservation and move the rest to sciond.
 type HummingbirdClient struct {
 	// caches a decoded path for multiple uses
 	dec hummingbird.Decoded
@@ -161,30 +157,32 @@ type HummingbirdClient struct {
 	xkbuffer   [hummingbird.XkBufferSize]uint32
 }
 
+func NewReservation(p snet.Path) (*HummingbirdClient, error) {
+	c := &HummingbirdClient{}
+	return c, c.PrepareHbirdPath(p)
+}
+
 func (c *HummingbirdClient) parseIAs(ifs []snet.PathInterface) error {
-	c.hops[0].as = ifs[0].IA
-	i, j := 1, 1
-	for i < len(c.hops) && j < len(ifs) {
+	c.hops[0].IA = ifs[0].IA
+
+	for i, j := 1, 1; i < len(c.hops) && j < len(ifs); {
 		if ifs[j].IA == ifs[j-1].IA {
 			// Ignore duplicates
 			j++
 		} else {
-			c.hops[i].as = ifs[j].IA
+			c.hops[i].IA = ifs[j].IA
 			i++
 			j++
 		}
-	}
-	if i < len(c.hops) {
-		return serrors.New("Not enough ASes for this path")
 	}
 	return nil
 }
 
 // Prepares as hummingbird path and initializes the fields of the hummingbirdClient struct
 // Returns an array of Hops containing the AS, Ingress and Egress of each hop on the path
-func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) ([]Hop, error) {
+func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) error {
 	if p == nil {
-		return nil, serrors.New("Empty path")
+		return serrors.New("Empty path")
 	}
 	c.dec = hummingbird.Decoded{}
 	switch v := p.Dataplane().(type) {
@@ -192,15 +190,15 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) ([]Hop, error) {
 		// Convert path to decoded hbird path
 		scionDec := scion.Decoded{}
 		if err := scionDec.DecodeFromBytes(v.Raw); err != nil {
-			return nil, serrors.Join(err, serrors.New("Failed to Prepare Hummingbird Path"))
+			return serrors.Join(err, serrors.New("Failed to Prepare Hummingbird Path"))
 		}
 		c.dec.ConvertFromScionDecoded(scionDec)
 	case snetpath.Hummingbird:
 		if err := c.dec.DecodeFromBytes(v.Raw); err != nil {
-			return nil, serrors.Join(err, serrors.New("Failed to Prepare Hummingbird Path"))
+			return serrors.Join(err, serrors.New("Failed to Prepare Hummingbird Path"))
 		}
 	default:
-		return nil, serrors.New("Unsupported path type")
+		return serrors.New("Unsupported path type")
 	}
 	// Initialize a hop for each traversed as
 	c.hops = make([]hbirdHop, len(c.dec.HopFields))
@@ -227,7 +225,7 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) ([]Hop, error) {
 		} else {
 			infIdx = 2
 			if c.dec.InfoFields[2].Peer {
-				return nil, serrors.New("Invalid path, cannot have 3 segments on peering path")
+				return serrors.New("Invalid path, cannot have 3 segments on peering path")
 			}
 			if i == int(c.dec.FirstHopPerSeg[1]) && i < len(c.dec.HopFields)-1 {
 				// First hop after Crossover, nothing to be done
@@ -239,47 +237,47 @@ func (c *HummingbirdClient) PrepareHbirdPath(p snet.Path) ([]Hop, error) {
 		// Set ingress/egress
 		if xover {
 			if c.dec.InfoFields[infIdx].ConsDir {
-				c.hops[j].ingress = c.dec.HopFields[i].HopField.ConsIngress
+				c.hops[j].Ingress = c.dec.HopFields[i].HopField.ConsIngress
 			} else {
-				c.hops[j].ingress = c.dec.HopFields[i].HopField.ConsEgress
+				c.hops[j].Ingress = c.dec.HopFields[i].HopField.ConsEgress
 			}
 			if c.dec.InfoFields[infIdx+1].ConsDir {
-				c.hops[j].egress = c.dec.HopFields[i+1].HopField.ConsEgress
+				c.hops[j].Egress = c.dec.HopFields[i+1].HopField.ConsEgress
 			} else {
-				c.hops[j].egress = c.dec.HopFields[i+1].HopField.ConsIngress
+				c.hops[j].Egress = c.dec.HopFields[i+1].HopField.ConsIngress
 			}
 		} else {
 			if c.dec.InfoFields[infIdx].ConsDir {
-				c.hops[j].ingress = c.dec.HopFields[i].HopField.ConsIngress
-				c.hops[j].egress = c.dec.HopFields[i].HopField.ConsEgress
+				c.hops[j].Ingress = c.dec.HopFields[i].HopField.ConsIngress
+				c.hops[j].Egress = c.dec.HopFields[i].HopField.ConsEgress
 			} else {
-				c.hops[j].ingress = c.dec.HopFields[i].HopField.ConsEgress
-				c.hops[j].egress = c.dec.HopFields[i].HopField.ConsIngress
+				c.hops[j].Ingress = c.dec.HopFields[i].HopField.ConsEgress
+				c.hops[j].Egress = c.dec.HopFields[i].HopField.ConsIngress
 			}
 		}
 		// cache scion mac
 		copy(c.hops[j].scionMac[:], c.hops[j].hopfield.HopField.Mac[:])
 		// Initialiaze reservations
-		c.hops[j].reservations = make([]Reservation, 0, 2)
+		c.hops[j].reservations = make([]Flyover, 0, 2)
 		j++
 	}
 	c.hops = c.hops[:j]
 	// Parse the list of ASes on path
 	if err := c.parseIAs(p.Metadata().Interfaces); err != nil {
-		return nil, serrors.Join(err, serrors.New("Malformed path"))
+		return serrors.Join(err, serrors.New("Malformed path"))
 	}
-	c.dest = c.hops[len(c.hops)-1].as
+	c.dest = c.hops[len(c.hops)-1].IA
 
-	return c.GetPathASes(), nil
+	return nil
 }
 
 // For each hop in the path, returns a reservation containing the AS, Ingress and Egress of that hop
 func (c *HummingbirdClient) GetPathASes() []Hop {
 	hops := make([]Hop, len(c.hops))
 	for i, h := range c.hops {
-		hops[i].AS = h.as
-		hops[i].Ingress = h.ingress
-		hops[i].Egress = h.egress
+		hops[i].IA = h.IA
+		hops[i].Ingress = h.Ingress
+		hops[i].Egress = h.Egress
 	}
 	return hops
 }
@@ -290,12 +288,12 @@ func (c *HummingbirdClient) GetPathASes() []Hop {
 // duration: The duration of the reservation in seconds
 // TODO: add async version once we have request api
 func (c *HummingbirdClient) RequestReservationsAllHops(
-	bw uint16, start uint32, duration uint16) ([]Reservation, error) {
+	bw uint16, start uint32, duration uint16) ([]Flyover, error) {
 	hops := make([]Hop, len(c.hops))
 	for i, h := range c.hops {
-		hops[i].AS = h.as
-		hops[i].Ingress = h.ingress
-		hops[i].Egress = h.egress
+		hops[i].IA = h.IA
+		hops[i].Ingress = h.Ingress
+		hops[i].Egress = h.Egress
 	}
 
 	return RequestReservationForASes(hops[:], bw, start, duration)
@@ -306,10 +304,10 @@ func (c *HummingbirdClient) RequestReservationsAllHops(
 // (if any) are returned once we have actual requests
 // TODO: add fully async version of this
 func RequestReservationForASes(
-	hops []Hop, bw uint16, start uint32, duration uint16) ([]Reservation, error) {
+	hops []Hop, bw uint16, start uint32, duration uint16) ([]Flyover, error) {
 
 	log.Debug("Requesting reservations for", "Hops", hops)
-	reservations := make([]Reservation, len(hops))
+	reservations := make([]Flyover, len(hops))
 	for i, h := range hops {
 		//TODO: Once we have API for requests
 		// Request (AS, ingress, egress, bw, start, duration)
@@ -317,7 +315,7 @@ func RequestReservationForASes(
 		// Temporary Cheating
 		// Current implementation cheats by writing data directly into c.hops instead
 
-		reservations[i].AS = h.AS
+		reservations[i].IA = h.IA
 		reservations[i].Ingress = h.Ingress
 		reservations[i].Egress = h.Egress
 		reservations[i].Bw = bw
@@ -334,12 +332,12 @@ func RequestReservationForASes(
 }
 
 // Return all Reservations present in the database
-func GetAllReservations() ([]Reservation, error) {
+func GetAllReservations() ([]Flyover, error) {
 	return nil, serrors.New("Not Implemented")
 }
 
 // Returns all reservations in the database that can be used for the current path
-func (c *HummingbirdClient) GetAvailableReservations() ([]Reservation, error) {
+func (c *HummingbirdClient) GetAvailableReservations() ([]Flyover, error) {
 	// Return all reservations in the data base
 	//TODO: return all reservations in the db that fit the path (AS, ingress egress)
 
@@ -349,12 +347,12 @@ func (c *HummingbirdClient) GetAvailableReservations() ([]Reservation, error) {
 }
 
 // Adds the listed reservations to the path
-func (c *HummingbirdClient) ApplyReservations(res []Reservation) error {
+func (c *HummingbirdClient) ApplyReservations(res []Flyover) error {
 	log.Debug("Applying reservations", "reservations", res)
 	for _, r := range res {
 		for j, h := range c.hops {
-			if r.AS == h.as {
-				if r.Ingress == h.ingress && r.Egress == h.egress {
+			if r.IA == h.IA {
+				if r.Ingress == h.Ingress && r.Egress == h.Egress {
 					c.hops[j].reservations = append(c.hops[j].reservations, r)
 					if len(c.hops[j].reservations) == 1 {
 						c.hops[j].hopfield.Flyover = true
@@ -377,8 +375,8 @@ func (c *HummingbirdClient) ApplyReservations(res []Reservation) error {
 // Returns all the reservations that the client may currently use
 // If there are multiple reservations for a hop,
 // The one currently used is the first appearing in the returned array
-func (c *HummingbirdClient) GetUsedReservations() []Reservation {
-	res := make([]Reservation, 0, len(c.hops))
+func (c *HummingbirdClient) GetUsedReservations() []Flyover {
+	res := make([]Flyover, 0, len(c.hops))
 	for _, h := range c.hops {
 		res = append(res, h.reservations...)
 	}
@@ -395,7 +393,7 @@ func (c *HummingbirdClient) removeReservation(hopIdx int, resID uint32) {
 					h.hopfield.Flyover = false
 					c.dec.NumLines -= 2
 					c.dec.PathMeta.SegLen[c.hops[hopIdx].infIdx] -= 2
-					h.reservations = []Reservation{}
+					h.reservations = []Flyover{}
 				} else {
 					copy(h.reservations[:], h.reservations[1:])
 					h.reservations = h.reservations[:len(h.reservations)-1]
@@ -417,10 +415,10 @@ func (c *HummingbirdClient) removeReservation(hopIdx int, resID uint32) {
 // Removes res from the reservations the client is allowed to use
 // Reservations are identified based on their AS and ResID
 // Does NOT check for validity of remaining reservations
-func (c *HummingbirdClient) RemoveReservations(res []Reservation) error {
+func (c *HummingbirdClient) RemoveReservations(res []Flyover) error {
 	for _, r := range res {
 		for i, h := range c.hops {
-			if r.AS == h.as {
+			if r.IA == h.IA {
 				c.removeReservation(i, r.ResID)
 				break
 			}
