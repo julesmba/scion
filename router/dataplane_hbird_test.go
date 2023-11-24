@@ -3815,6 +3815,60 @@ func TestBandwidthCheckDifferentResID(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestBandwidthCheckDifferentEgress(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	key := []byte("testkey_xxxxxxxx")
+	sv := []byte("test_secretvalue")
+	now := time.Now()
+
+	dp := router.NewDP(
+		map[uint16]router.BatchConn{
+			uint16(2): mock_router.NewMockBatchConn(ctrl),
+			uint16(3): mock_router.NewMockBatchConn(ctrl),
+		},
+		map[uint16]topology.LinkType{
+			1: topology.Parent,
+			2: topology.Child,
+			3: topology.Child,
+		},
+		nil, nil, nil, xtest.MustParseIA("1-ff00:0:110"), nil, key, sv)
+
+	spkt, dpath := prepHbirdMsg(now)
+	dpath.HopFields = []hummingbird.FlyoverHopField{
+		{HopField: path.HopField{ConsIngress: 31, ConsEgress: 30}},
+		{Flyover: true, HopField: path.HopField{ConsIngress: 1, ConsEgress: 2}, ResID: 42,
+			Bw: 2, ResStartTime: 123, Duration: 304},
+		{HopField: path.HopField{ConsIngress: 40, ConsEgress: 41}},
+	}
+	dpath.Base.PathMeta.SegLen[0] = 11
+	dpath.Base.PathMeta.CurrHF = 3
+	dpath.Base.NumLines = 11
+
+	spkt.PayloadLen = 120
+	dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+		spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
+
+	msg := toLongMsg(t, spkt, dpath)
+
+	_, err := dp.ProcessPkt(1, msg)
+	assert.NoError(t, err)
+
+	msg = toLongMsg(t, spkt, dpath)
+	_, err = dp.ProcessPkt(1, msg)
+	assert.Error(t, err)
+
+	// Reservation with same resID but different Ingress/Egress pair is a different reservation
+	dpath.HopFields[1].HopField.ConsEgress = 3
+	spkt.PayloadLen = 120
+	dpath.HopFields[1].HopField.Mac = computeAggregateMac(t, key, sv, spkt.DstIA,
+		spkt.PayloadLen, dpath.InfoFields[0], dpath.HopFields[1], dpath.Base.PathMeta)
+	msg = toLongMsg(t, spkt, dpath)
+	_, err = dp.ProcessPkt(1, msg)
+	assert.NoError(t, err)
+}
+
 func toLongMsg(t *testing.T, spkt *slayers.SCION, dpath path.Path) *ipv4.Message {
 	t.Helper()
 	ret := &ipv4.Message{}

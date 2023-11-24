@@ -130,32 +130,41 @@ func (p *scionPacketProcessor) currentHbirdHopPointer() uint16 {
 		hummingbird.LineLen*int(p.hbirdPath.PathMeta.CurrHF))
 }
 
+// Returns the ingress and egress through which the current packet enters and leves the AS
+func (p *scionPacketProcessor) getFlyoverInterfaces() (uint16, uint16, error) {
+	ingress := p.hopField.ConsIngress
+	egress := p.hopField.ConsEgress
+	// Reservations are not bidirectional,
+	//   reservation ingress and egress are always real ingress and egress
+	if !p.infoField.ConsDir {
+		ingress, egress = egress, ingress
+	}
+	// On crossovers, A Reservation goes from the ingress of the incoming hop to
+	//   the egress of the outgoing one
+	var err error
+	if p.hbirdPath.IsXover() && !p.peering {
+		egress, err = p.hbirdPath.GetNextEgress()
+		if err != nil {
+			return 0, 0, err
+		}
+	} else if p.hbirdPath.IsFirstHopAfterXover() && !p.peering {
+		ingress, err = p.hbirdPath.GetPreviousIngress()
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+	return ingress, egress, nil
+}
+
 func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
 	var flyoverMac []byte
 	var verified int
 
 	// Compute flyovermac
 	if p.flyoverField.Flyover {
-		ingress := p.hopField.ConsIngress
-		egress := p.hopField.ConsEgress
-		// Reservations are not bidirectional,
-		//   reservation ingress and egress are always real ingress and egress
-		if !p.infoField.ConsDir {
-			ingress, egress = egress, ingress
-		}
-		// On crossovers, A Reservation goes from the ingress of the incoming hop to
-		//   the egress of the outgoing one
-		var err error
-		if p.hbirdPath.IsXover() && !p.peering {
-			egress, err = p.hbirdPath.GetNextEgress()
-			if err != nil {
-				return processResult{}, err
-			}
-		} else if p.hbirdPath.IsFirstHopAfterXover() && !p.peering {
-			ingress, err = p.hbirdPath.GetPreviousIngress()
-			if err != nil {
-				return processResult{}, err
-			}
+		ingress, egress, err := p.getFlyoverInterfaces()
+		if err != nil {
+			return processResult{}, err
 		}
 
 		ak := hummingbird.DeriveAuthKey(p.prf, p.flyoverField.ResID, p.flyoverField.Bw,
@@ -329,7 +338,14 @@ func (p *scionPacketProcessor) checkReservationBandwidth() (processResult, error
 	if !p.hasPriority {
 		return processResult{}, nil
 	}
-	v, ok := p.d.tokenBuckets.Load(p.flyoverField.ResID)
+	// resID only has to be unique per interface pair
+	// key for the tokenbuckets map is based on flyover resID, ingress and egress
+	ingress, egress, err := p.getFlyoverInterfaces()
+	if err != nil {
+		return processResult{}, err
+	}
+	resKey := uint64(p.flyoverField.ResID) + uint64(ingress)<<22 + uint64(egress)<<38
+	v, ok := p.d.tokenBuckets.Load(resKey)
 	if ok {
 		// Check bandwidth
 		tb, ok := v.(*tokenbucket.TokenBucket)
@@ -355,7 +371,7 @@ func (p *scionPacketProcessor) checkReservationBandwidth() (processResult, error
 	resBw := convertResBw(p.flyoverField.Bw)
 	now := time.Now()
 	tb := tokenbucket.NewTokenBucket(now, resBw, resBw)
-	p.d.tokenBuckets.Store(p.flyoverField.ResID, tb)
+	p.d.tokenBuckets.Store(resKey, tb)
 
 	if tb.Apply(int(p.scionLayer.PayloadLen), time.Now()) {
 		return processResult{}, nil
