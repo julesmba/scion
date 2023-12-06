@@ -371,7 +371,13 @@ func (p *scionPacketProcessor) checkReservationBandwidth() (processResult, error
 	resBw := convertResBw(p.flyoverField.Bw)
 	now := time.Now()
 	tb := tokenbucket.NewTokenBucket(now, resBw, resBw)
-	p.d.tokenBuckets.Store(resKey, tb)
+	r, _ := p.d.tokenBuckets.LoadOrStore(resKey, tb)
+
+	tb, ok = r.(*tokenbucket.TokenBucket)
+	if !ok {
+		log.Error("Non-tokenbucket value found in tokenbucket map")
+		panic("tokenbucket map contains value of different type")
+	}
 
 	if tb.Apply(int(p.scionLayer.PayloadLen), time.Now()) {
 		return processResult{}, nil

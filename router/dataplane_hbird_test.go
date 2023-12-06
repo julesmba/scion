@@ -3709,6 +3709,8 @@ func TestHbirdPacketPath(t *testing.T) {
 	}
 }
 
+// TODO(juagargi): write test for concurrent bandwidth check calls
+
 func TestBandwidthCheck(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
