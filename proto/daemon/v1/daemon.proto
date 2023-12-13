@@ -43,10 +43,10 @@ service DaemonService {
     // DRKeyHostHost returns a key that matches the request.
     rpc DRKeyHostHost (DRKeyHostHostRequest) returns (DRKeyHostHostResponse) {}
 
-
+    // StoreFlyovers stores the flyovers in the DB.
     rpc StoreFlyovers(StoreFlyoversRequest) returns (StoreFlyoversResponse) {}
+    // ListFlyovers lists all stored flyovers in this DB.
     rpc ListFlyovers(ListFlyoversRequest) returns (ListFlyoversResponse) {}
-
     // GetReservations finds paths from source to destination, and then tries to assign flyovers to
     // as many hops as possible.
 	rpc GetReservations(GetReservationsRequest) returns (GetReservationsResponse) {}

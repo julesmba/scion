@@ -19,27 +19,53 @@ option go_package = "github.com/scionproto/scion/pkg/proto/daemon";
 package proto.daemon.v1;
 
 
-message StoreFlyoversRequest {}
-message StoreFlyoversResponse {}
-message ListFlyoversRequest {}
-message ListFlyoversResponse {}
+message StoreFlyoversRequest {
+    repeated Flyover flyovers = 1;
+}
+
+message StoreFlyoversResponse {} // empty
+
+message ListFlyoversRequest {} // empty
+
+message ListFlyoversResponse {
+    repeated Flyover flyovers = 1;
+}
 
 
 message GetReservationsRequest {
-	// ISD-AS of the source of the path request.
+    // ISD-AS of the source of the path request.
     uint64 source_isd_as = 1;
     // ISD-AS of the destination of the path request.
     uint64 destination_isd_as = 2;
     // Choose to fetch fresh paths for this request instead
     // of having the server reply from its cache.
     bool refresh = 3;
+    // The minimum bandwidth for the obtained reservations.
+    uint64 min_bandwidth = 4;
 }
 
 message GetReservationsResponse {
-	repeated Reservation reservations = 1;
+    repeated Reservation reservations = 1;
+}
+
+message Flyover {
+    // The AS ID in ISD-AS form (64 bits).
+    uint64 ia = 1;
+    // Ingress ID. 16 bits.
+    uint32 ingress = 2;
+    // Egress ID. 16 bits.
+    uint32 egress = 3;
+    // Bandwidth. 16 bits.
+    uint32 bw = 4;
+    // Duration in seconds. 16 bits.
+    uint32 duration = 5;
+    // Endtime is the unix timestamp when the reservation is no longer valid.
+    uint32 endtime = 6;
 }
 
 message Reservation {
-	bytes raw = 1;
-	double ratio = 2; // ratio flyovers / hops
+    // The raw Hummingbird path.
+    bytes raw = 1;
+    // Ratio # flyovers / # hops.
+    double ratio = 2;
 }
