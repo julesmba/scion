@@ -43,12 +43,12 @@ var testHopFields = []path.HopField{
 	{
 		ExpTime:     63,
 		ConsIngress: 0,
-		ConsEgress:  2,
+		ConsEgress:  4,
 		Mac:         [path.MacLen]byte{1, 2, 3, 4, 5, 6},
 	},
 	{
 		ExpTime:     63,
-		ConsIngress: 1,
+		ConsIngress: 5,
 		ConsEgress:  0,
 		Mac:         [path.MacLen]byte{1, 2, 3, 4, 5, 6},
 	},
@@ -119,6 +119,25 @@ var decodedTestPath = &scion.Decoded{
 	HopFields:  testHopFields,
 }
 
+var interfacesTest = []snet.PathInterface{
+	{
+		IA: 12,
+		ID: 1,
+	},
+	{
+		IA: 13,
+		ID: 2,
+	},
+	{
+		IA: 13,
+		ID: 4,
+	},
+	{
+		IA: 14,
+		ID: 5,
+	},
+}
+
 var decodedHbirdTestPath = &hummingbird.Decoded{
 	Base: hummingbird.Base{
 		PathMeta: hummingbird.MetaHdr{
@@ -158,26 +177,13 @@ func getRawScionPath(d scion.Decoded) ([]byte, error) {
 func getScionSnetPath() (snetpath.Path, error) {
 	rawScion, err := getRawScionPath(*decodedTestPath)
 	p := snetpath.Path{
-		Src: 12,
-		Dst: 16,
+		Src: interfacesTest[0].IA,
+		Dst: interfacesTest[len(interfacesTest)-1].IA,
 		DataplanePath: snetpath.SCION{
 			Raw: rawScion,
 		},
 		Meta: snet.PathMetadata{
-			Interfaces: []snet.PathInterface{
-				{
-					IA: 12,
-				},
-				{
-					IA: 13,
-				},
-				{
-					IA: 13,
-				},
-				{
-					IA: 16,
-				},
-			},
+			Interfaces: interfacesTest,
 		},
 	}
 	return p, err
@@ -198,26 +204,13 @@ func getHbirdNoFlyoversSnetPath(t time.Time) (snetpath.Path, error) {
 
 	rawHbird, err := getRawHbirdPath(decoded)
 	p := snetpath.Path{
-		Src: 12,
-		Dst: 16,
+		Src: interfacesTest[0].IA,
+		Dst: interfacesTest[len(interfacesTest)-1].IA,
 		DataplanePath: snetpath.Hummingbird{
 			Raw: rawHbird,
 		},
 		Meta: snet.PathMetadata{
-			Interfaces: []snet.PathInterface{
-				{
-					IA: 12,
-				},
-				{
-					IA: 13,
-				},
-				{
-					IA: 13,
-				},
-				{
-					IA: 16,
-				},
-			},
+			Interfaces: interfacesTest,
 		},
 	}
 	return p, err
@@ -236,15 +229,18 @@ func getHbirdFlyoversSnetPath(t time.Time) (snetpath.Path, error) {
 	macBuffer2 := make([]byte, hummingbird.FlyoverMacBufferSize)
 
 	ak0 := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
-	flyover0 := hummingbird.FullFlyoverMac(ak0, 16, 16, decoded.HopFields[0].ResStartTime,
+	flyover0 := hummingbird.FullFlyoverMac(ak0, interfacesTest[len(interfacesTest)-1].IA,
+		16, decoded.HopFields[0].ResStartTime,
 		millis, macBuffer0, xkBuffer)
 
 	ak1 := []byte{0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1, 0}
-	flyover1 := hummingbird.FullFlyoverMac(ak1, 16, 16, decoded.HopFields[1].ResStartTime,
+	flyover1 := hummingbird.FullFlyoverMac(ak1, interfacesTest[len(interfacesTest)-1].IA,
+		16, decoded.HopFields[1].ResStartTime,
 		millis, macBuffer1, xkBuffer)
 
 	ak2 := []byte{0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7}
-	flyover2 := hummingbird.FullFlyoverMac(ak2, 16, 16, decoded.HopFields[3].ResStartTime,
+	flyover2 := hummingbird.FullFlyoverMac(ak2, interfacesTest[len(interfacesTest)-1].IA,
+		16, decoded.HopFields[3].ResStartTime,
 		millis, macBuffer2, xkBuffer)
 
 	for i := 0; i < 6; i++ {
@@ -255,26 +251,13 @@ func getHbirdFlyoversSnetPath(t time.Time) (snetpath.Path, error) {
 
 	rawHbird, err := getRawHbirdPath(decoded)
 	p := snetpath.Path{
-		Src: 12,
-		Dst: 16,
+		Src: interfacesTest[0].IA,
+		Dst: interfacesTest[len(interfacesTest)-1].IA,
 		DataplanePath: snetpath.Hummingbird{
 			Raw: rawHbird,
 		},
 		Meta: snet.PathMetadata{
-			Interfaces: []snet.PathInterface{
-				{
-					IA: 12,
-				},
-				{
-					IA: 13,
-				},
-				{
-					IA: 13,
-				},
-				{
-					IA: 16,
-				},
-			},
+			Interfaces: interfacesTest,
 		},
 	}
 	return p, err

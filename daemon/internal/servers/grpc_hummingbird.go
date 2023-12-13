@@ -30,7 +30,7 @@ import (
 )
 
 type HummingbirdFetcher interface {
-	ListFlyovers(ctx context.Context, owners []addr.IA) ([]*hummingbird.Hop, error)
+	ListFlyovers(ctx context.Context, owners []addr.IA) ([]*hummingbird.BaseHop, error)
 }
 
 func (s *DaemonServer) StoreFlyovers(
@@ -237,9 +237,9 @@ type flyoverMapKey struct {
 	Ingress uint16
 	Egress  uint16
 }
-type flyoverMap map[flyoverMapKey]*hummingbird.Hop
+type flyoverMap map[flyoverMapKey]*hummingbird.BaseHop
 
-func flyoversToMap(flyovers []*hummingbird.Hop) flyoverMap {
+func flyoversToMap(flyovers []*hummingbird.BaseHop) flyoverMap {
 	ret := make(flyoverMap)
 	for _, flyover := range flyovers {
 		k := flyoverMapKey{
@@ -252,7 +252,7 @@ func flyoversToMap(flyovers []*hummingbird.Hop) flyoverMap {
 	return ret
 }
 
-// assignFlyovers assigns as many flyovers as possible to a path.
+// assignFlyovers assigns as flyovers to as many hops of a path as possible.
 // The first returned value is a slice of flyovers, with the same length as the hop sequence,
 // and when not nil, it points to a Flyover that can be used in the hop of that specific index.
 // As SCION hops appear twice per ingress/egress pairs (with the exception of the first and
@@ -263,12 +263,12 @@ func flyoversToMap(flyovers []*hummingbird.Hop) flyoverMap {
 func assignFlyovers(
 	hopSequence []snet.PathInterface,
 	flyovers flyoverMap,
-) ([]*hummingbird.Hop, float64) {
+) ([]*hummingbird.BaseHop, float64) {
 
-	ret := make([]*hummingbird.Hop, len(hopSequence))
+	ret := make([]*hummingbird.BaseHop, len(hopSequence))
 	flyoverExistsCount := 0
 
-	// Do the first flyover appart.
+	// Do the first flyover apart.
 	k := flyoverMapKey{
 		IA:      hopSequence[0].IA,
 		Ingress: 0,
@@ -309,8 +309,3 @@ func assignFlyovers(
 
 	return ret, float64(flyoverExistsCount) / float64(len(hopSequence)/2)
 }
-
-// func assignRemainingFlyovers(
-// 	hopSequence []snet.PathInterface,
-// 	flyovers flyoverMap,
-// ) []

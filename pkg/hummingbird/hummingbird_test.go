@@ -26,19 +26,27 @@ import (
 	snetpath "github.com/scionproto/scion/pkg/snet/path"
 )
 
-var testHops = []hummingbird.Hop{
-	{IA: 12, Ingress: 0, Egress: 1},
-	{IA: 13, Ingress: 2, Egress: 2},
-	{IA: 16, Ingress: 1, Egress: 0},
+var testHops = []hummingbird.BaseHop{
+	{
+		IA:      interfacesTest[0].IA,
+		Ingress: 0,
+		Egress:  1,
+	},
+	{
+		IA:      13,
+		Ingress: 2,
+		Egress:  4,
+	},
+	{
+		IA:      interfacesTest[len(interfacesTest)-1].IA,
+		Ingress: 5,
+		Egress:  0,
+	},
 }
 
-var testReservatons = []hummingbird.Flyover{
+var testFlyovers = []hummingbird.Flyover{
 	{
-		Hop: hummingbird.Hop{
-			IA:      12,
-			Ingress: 0,
-			Egress:  1,
-		},
+		BaseHop:   testHops[0],
 		ResID:     1234,
 		Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
 		Bw:        16,
@@ -46,11 +54,7 @@ var testReservatons = []hummingbird.Flyover{
 		StartTime: uint32(fixedTime.Unix()) - 10,
 	},
 	{
-		Hop: hummingbird.Hop{
-			IA:      13,
-			Ingress: 2,
-			Egress:  2,
-		},
+		BaseHop:   testHops[1],
 		ResID:     42,
 		Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1, 0},
 		Bw:        16,
@@ -58,11 +62,7 @@ var testReservatons = []hummingbird.Flyover{
 		StartTime: uint32(fixedTime.Unix()) - 32,
 	},
 	{
-		Hop: hummingbird.Hop{
-			IA:      16,
-			Ingress: 1,
-			Egress:  0,
-		},
+		BaseHop:   testHops[2],
 		ResID:     365,
 		Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7},
 		Bw:        20,
@@ -70,11 +70,7 @@ var testReservatons = []hummingbird.Flyover{
 		StartTime: uint32(fixedTime.Unix()) - 80,
 	},
 	{
-		Hop: hummingbird.Hop{
-			IA:      16,
-			Ingress: 1,
-			Egress:  0,
-		},
+		BaseHop:   testHops[2],
 		ResID:     21,
 		Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7},
 		Bw:        20,
@@ -135,7 +131,7 @@ func TestApplyReservations(t *testing.T) {
 	hops := c.GetPathASes()
 	assert.Equal(t, testHops, hops)
 
-	err = c.ApplyReservations(testReservatons)
+	err = c.ApplyReservations(testFlyovers)
 	assert.NoError(t, err)
 
 	scionPath, err = getScionSnetPath()
@@ -168,81 +164,49 @@ func TestCheckReservationExpiry(t *testing.T) {
 	// hop3: first not yet valid, second expired
 	input := []hummingbird.Flyover{
 		{
-			Hop: hummingbird.Hop{
-				IA:      12,
-				Ingress: 0,
-				Egress:  1,
-			},
+			BaseHop:   testHops[0],
 			ResID:     1234,
 			Duration:  70,
 			StartTime: now - 80,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      12,
-				Ingress: 0,
-				Egress:  1,
-			},
+			BaseHop:   testHops[0],
 			ResID:     34,
 			Duration:  560,
 			StartTime: now - 10,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      13,
-				Ingress: 2,
-				Egress:  2,
-			},
+			BaseHop:   testHops[1],
 			ResID:     42,
 			Duration:  80,
 			StartTime: now - 100,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      13,
-				Ingress: 2,
-				Egress:  2,
-			},
+			BaseHop:   testHops[1],
 			ResID:     31,
 			Duration:  389,
 			StartTime: now + 50,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      13,
-				Ingress: 2,
-				Egress:  2,
-			},
+			BaseHop:   testHops[1],
 			ResID:     12,
 			Duration:  64,
 			StartTime: now - 60,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      13,
-				Ingress: 2,
-				Egress:  2,
-			},
+			BaseHop:   testHops[1],
 			ResID:     5,
 			Duration:  180,
 			StartTime: now - 30,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      16,
-				Ingress: 1,
-				Egress:  0,
-			},
+			BaseHop:   testHops[2],
 			ResID:     365,
 			Duration:  150,
 			StartTime: now + 60,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      16,
-				Ingress: 1,
-				Egress:  0,
-			},
+			BaseHop:   testHops[2],
 			ResID:     345,
 			Duration:  150,
 			StartTime: now - 345,
@@ -251,41 +215,25 @@ func TestCheckReservationExpiry(t *testing.T) {
 
 	expected := []hummingbird.Flyover{
 		{
-			Hop: hummingbird.Hop{
-				IA:      12,
-				Ingress: 0,
-				Egress:  1,
-			},
+			BaseHop:   testHops[0],
 			ResID:     34,
 			Duration:  560,
 			StartTime: now - 10,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      13,
-				Ingress: 2,
-				Egress:  2,
-			},
+			BaseHop:   testHops[1],
 			ResID:     5,
 			Duration:  180,
 			StartTime: now - 30,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      13,
-				Ingress: 2,
-				Egress:  2,
-			},
+			BaseHop:   testHops[1],
 			ResID:     31,
 			Duration:  389,
 			StartTime: now + 50,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      16,
-				Ingress: 1,
-				Egress:  0,
-			},
+			BaseHop:   testHops[2],
 			ResID:     365,
 			Duration:  150,
 			StartTime: now + 60,
@@ -325,25 +273,25 @@ func TestRemoveReservations(t *testing.T) {
 	c, err := hummingbird.NewReservation(scionPath)
 	require.NoError(t, err)
 
-	err = c.ApplyReservations(testReservatons)
+	err = c.ApplyReservations(testFlyovers)
 	assert.NoError(t, err)
 
 	remove := []hummingbird.Flyover{
 		{
-			Hop: hummingbird.Hop{
-				IA: 12,
+			BaseHop: hummingbird.BaseHop{
+				IA: testHops[0].IA,
 			},
 			ResID: 1234,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA: 13,
+			BaseHop: hummingbird.BaseHop{
+				IA: testHops[1].IA,
 			},
 			ResID: 53,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA: 16,
+			BaseHop: hummingbird.BaseHop{
+				IA: testHops[2].IA,
 			},
 			ResID: 365,
 		},
@@ -351,11 +299,7 @@ func TestRemoveReservations(t *testing.T) {
 
 	expected := []hummingbird.Flyover{
 		{
-			Hop: hummingbird.Hop{
-				IA:      13,
-				Ingress: 2,
-				Egress:  2,
-			},
+			BaseHop:   testHops[1],
 			ResID:     42,
 			Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1, 0},
 			Bw:        16,
@@ -363,11 +307,7 @@ func TestRemoveReservations(t *testing.T) {
 			StartTime: uint32(fixedTime.Unix()) - 32,
 		},
 		{
-			Hop: hummingbird.Hop{
-				IA:      16,
-				Ingress: 1,
-				Egress:  0,
-			},
+			BaseHop:   testHops[2],
 			ResID:     21,
 			Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7},
 			Bw:        20,

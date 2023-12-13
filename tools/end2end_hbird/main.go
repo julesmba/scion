@@ -71,7 +71,6 @@ var (
 	timeout                = &util.DurWrap{Duration: 10 * time.Second}
 	scionPacketConnMetrics = metrics.NewSCIONPacketConnMetrics()
 	scmpErrorsCounter      = scionPacketConnMetrics.SCMPErrors
-	epic                   bool
 	flyovers               bool
 	partial                bool
 )
@@ -108,7 +107,6 @@ func realMain() int {
 func addFlags() {
 	flag.Var(&remote, "remote", "(Mandatory for clients) address to connect to")
 	flag.Var(timeout, "timeout", "The timeout for each attempt")
-	flag.BoolVar(&epic, "epic", false, "Enable EPIC.")
 	flag.BoolVar(&flyovers, "flyovers", true, "Enable Flyovers")
 	flag.BoolVar(&partial, "partial", false, "If true, only subset of hops have flyovers")
 }
@@ -303,6 +301,13 @@ func (c *client) attemptRequest(n int) bool {
 	defer span.Finish()
 	// Convert path to Hummingbird path
 	if path != nil {
+
+		// TODO: request flyovers for existing path(s). This is done by the user asynchrously
+
+		// TODO: insert flyovers obtained from Mysten's library.
+
+		// TODO:
+
 		if !flyovers {
 			// Standard path, no reservations at all
 			path, err = hummingbird.ConvertToHbirdPath(path, time.Now())
@@ -438,6 +443,7 @@ func (c *client) ping(ctx context.Context, n int, path snet.Path) error {
 }
 
 func (c *client) getRemote(ctx context.Context, n int) (snet.Path, error) {
+	// TODO: this function should return all possible paths.
 	if remote.IA.Equal(integration.Local.IA) {
 		remote.Path = snetpath.Empty{}
 		return nil, nil
@@ -475,20 +481,7 @@ func (c *client) getRemote(ctx context.Context, n int) (snet.Path, error) {
 	}
 
 	// Extract forwarding path from the SCION Daemon response.
-	// If the epic flag is set, try to use the EPIC path type header.
-	if epic {
-		scionPath, ok := path.Dataplane().(snetpath.SCION)
-		if !ok {
-			return nil, serrors.New("provided path must be of type scion")
-		}
-		epicPath, err := snetpath.NewEPICDataplanePath(scionPath, path.Metadata().EpicAuths)
-		if err != nil {
-			return nil, err
-		}
-		remote.Path = epicPath
-	} else {
-		remote.Path = path.Dataplane()
-	}
+	remote.Path = path.Dataplane()
 	remote.NextHop = path.UnderlayNextHop()
 	return path, nil
 }
