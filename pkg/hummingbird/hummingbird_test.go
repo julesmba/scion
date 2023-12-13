@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/hummingbird"
 	snetpath "github.com/scionproto/scion/pkg/snet/path"
 )
@@ -33,7 +34,7 @@ var testHops = []hummingbird.BaseHop{
 		Egress:  1,
 	},
 	{
-		IA:      13,
+		IA:      interfacesTest[1].IA,
 		Ingress: 2,
 		Egress:  4,
 	},
@@ -79,60 +80,48 @@ var testFlyovers = []hummingbird.Flyover{
 	},
 }
 
-func TestPrepareHbirdPath(t *testing.T) {
-	now := time.Now()
-
+func TestConvertToHbirdPath(t *testing.T) {
 	scionPath, err := getScionSnetPath()
 	assert.NoError(t, err)
 
-	hbirdPath, err := getHbirdNoFlyoversSnetPath(now)
+	now := time.Now()
+	expectecPath, err := getHbirdNoFlyoversSnetPath(now)
 	assert.NoError(t, err)
 
 	out, err := hummingbird.ConvertToHbirdPath(scionPath, now)
 	assert.NoError(t, err)
-	assert.Equal(t, hbirdPath, out)
-
-	scionPath, err = getScionSnetPath()
-	assert.NoError(t, err)
-
-	c, err := hummingbird.NewReservation(scionPath)
-	require.NoError(t, err)
-	hops := c.GetPathASes()
-	assert.Equal(t, testHops, hops)
-
-	scionPath, err = getScionSnetPath()
-	assert.NoError(t, err)
-
-	output, err := c.FinalizePath(scionPath, 0, now)
-	assert.NoError(t, err)
-	assert.Equal(t, hbirdPath, output)
+	assert.Equal(t, expectecPath, out)
 }
 
-func TestGetPathASes(t *testing.T) {
+// deleteme remove this test
+func TestPrepareHbirdPath(t *testing.T) {
 	scionPath, err := getScionSnetPath()
 	assert.NoError(t, err)
 
-	c, err := hummingbird.NewReservation(scionPath)
+	now := time.Now()
+
+	flyovers := flyoverSliceToMap(testFlyovers)
+	flyovers = nil
+	c, err := hummingbird.NewReservation(scionPath, flyovers)
 	require.NoError(t, err)
-	hops := c.GetPathASes()
-	assert.Equal(t, testHops, hops)
-
-	hops = c.GetPathASes()
-
-	assert.Equal(t, testHops, hops)
+	err = c.ApplyReservations(nil)
+	assert.NoError(t, err)
+	scionPath, err = getScionSnetPath()
+	assert.NoError(t, err)
+	output, err := c.FinalizePath(scionPath, 0, now)
+	assert.NoError(t, err)
+	expectecPath, err := getHbirdNoFlyoversSnetPath(now)
+	assert.NoError(t, err)
+	assert.Equal(t, expectecPath, output)
 }
 
+// deleteme rename this test as TestPrepareHbirdPath
 func TestApplyReservations(t *testing.T) {
 	scionPath, err := getScionSnetPath()
 	assert.NoError(t, err)
 
-	c, err := hummingbird.NewReservation(scionPath)
+	c, err := hummingbird.NewReservation(scionPath, flyoverSliceToMap(testFlyovers))
 	require.NoError(t, err)
-	hops := c.GetPathASes()
-	assert.Equal(t, testHops, hops)
-
-	err = c.ApplyReservations(testFlyovers)
-	assert.NoError(t, err)
 
 	scionPath, err = getScionSnetPath()
 	assert.NoError(t, err)
@@ -149,10 +138,8 @@ func TestCheckReservationExpiry(t *testing.T) {
 	scionPath, err := getScionSnetPath()
 	assert.NoError(t, err)
 
-	c, err := hummingbird.NewReservation(scionPath)
+	c, err := hummingbird.NewReservation(scionPath, nil)
 	require.NoError(t, err)
-	hops := c.GetPathASes()
-	assert.Equal(t, testHops, hops)
 
 	assert.NoError(t, err)
 
@@ -270,7 +257,7 @@ func TestRemoveReservations(t *testing.T) {
 	scionPath, err := getScionSnetPath()
 	assert.NoError(t, err)
 
-	c, err := hummingbird.NewReservation(scionPath)
+	c, err := hummingbird.NewReservation(scionPath, nil)
 	require.NoError(t, err)
 
 	err = c.ApplyReservations(testFlyovers)
@@ -337,4 +324,13 @@ func TestRemoveReservations(t *testing.T) {
 	assert.True(t, dec.HopFields[1].Flyover)
 	assert.False(t, dec.HopFields[2].Flyover)
 	assert.True(t, dec.HopFields[3].Flyover)
+}
+
+func flyoverSliceToMap(flyovers []hummingbird.Flyover) map[addr.IA][]*hummingbird.Flyover {
+	m := make(map[addr.IA][]*hummingbird.Flyover)
+	for _, flyover := range flyovers {
+		clone := flyover
+		m[clone.IA] = append(m[clone.IA], &clone)
+	}
+	return m
 }

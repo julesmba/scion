@@ -306,7 +306,7 @@ func (c *client) attemptRequest(n int) bool {
 
 		// TODO: insert flyovers obtained from Mysten's library.
 
-		// TODO:
+		// TODO: using the reservations in the DB, create a hummingbird path
 
 		if !flyovers {
 			// Standard path, no reservations at all

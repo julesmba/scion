@@ -71,9 +71,15 @@ type Hop struct {
 	scionMac [6]byte
 }
 
-func NewReservation(p snet.Path) (*Reservation, error) {
+func NewReservation(p snet.Path, flyovers map[addr.IA][]*Flyover) (*Reservation, error) {
+	// deleteme
+	// func NewReservation(p snet.Path) (*Reservation, error) {
 	c := &Reservation{}
-	return c, c.prepareHbirdPath(p)
+	err := c.prepareHbirdPath(p)
+	if err == nil {
+		c.applyFlyovers(flyovers)
+	}
+	return c, err
 }
 
 // prepareHbirdPathOlD prepares as hummingbird path and initializes the Resevation object.
@@ -275,20 +281,20 @@ func RequestReservationForASes(
 }
 
 // Adds the listed reservations to the path
-func (c *Reservation) ApplyReservations(res []Flyover) error {
-	log.Debug("Applying reservations", "reservations", res)
-	for _, r := range res {
+func (c *Reservation) ApplyReservations(flyovers []Flyover) error {
+	log.Debug("Applying reservations", "reservations", flyovers)
+	for _, f := range flyovers {
 		for j, h := range c.hops {
-			if r.IA == h.IA {
-				if r.Ingress == h.Ingress && r.Egress == h.Egress {
-					c.hops[j].reservations = append(c.hops[j].reservations, r)
+			if f.IA == h.IA {
+				if f.Ingress == h.Ingress && f.Egress == h.Egress {
+					c.hops[j].reservations = append(c.hops[j].reservations, f)
 					if len(c.hops[j].reservations) == 1 {
 						c.hops[j].hopfield.Flyover = true
 						c.dec.NumLines += 2
 						c.dec.PathMeta.SegLen[h.infIdx] += 2
-						c.hops[j].hopfield.Bw = r.Bw
-						c.hops[j].hopfield.Duration = r.Duration
-						c.hops[j].hopfield.ResID = r.ResID
+						c.hops[j].hopfield.Bw = f.Bw
+						c.hops[j].hopfield.Duration = f.Duration
+						c.hops[j].hopfield.ResID = f.ResID
 					}
 				} else {
 					// TODO: inform caller that this reservation cannot be set on this path
@@ -298,6 +304,24 @@ func (c *Reservation) ApplyReservations(res []Flyover) error {
 		}
 	}
 	return nil
+}
+
+func (c *Reservation) applyFlyovers(flyovers map[addr.IA][]*Flyover) {
+	for i, h := range c.hops {
+		flyovers := flyovers[h.IA]
+		for _, flyover := range flyovers {
+			if flyover.Ingress == h.Ingress && flyover.Egress == h.Egress {
+				c.hops[i].reservations = append(c.hops[i].reservations, *flyover)
+				c.hops[i].hopfield.Flyover = true
+				c.dec.NumLines += 2
+				c.dec.PathMeta.SegLen[h.infIdx] += 2
+				c.hops[i].hopfield.Bw = flyover.Bw
+				c.hops[i].hopfield.Duration = flyover.Duration
+				c.hops[i].hopfield.ResID = flyover.ResID
+				break
+			}
+		}
+	}
 }
 
 // Returns all the reservations that the client may currently use
