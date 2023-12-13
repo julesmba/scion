@@ -302,7 +302,7 @@ func (c *client) attemptRequest(n int) bool {
 	// Convert path to Hummingbird path
 	if path != nil {
 
-		// TODO: request flyovers for existing path(s). This is done by the user asynchrously
+		// TODO: buy flyovers for existing path(s). This is done by the user asynchronously
 
 		// TODO: insert flyovers obtained from Mysten's library.
 

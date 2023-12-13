@@ -210,14 +210,6 @@ func ingressID(ifaces []snet.PathInterface, idx int) uint16 {
 	return uint16(ifaces[i].ID)
 }
 
-func egressID(ifaces []snet.PathInterface, idx int) uint16 {
-	i := idx * 2
-	if i >= len(ifaces) {
-		return 0
-	}
-	return uint16(ifaces[i].ID)
-}
-
 // For each hop in the path, returns a reservation containing the AS, Ingress and Egress of that hop
 func (c *Reservation) GetPathASes() []BaseHop {
 	hops := make([]BaseHop, len(c.hops))
@@ -511,4 +503,15 @@ func hopIndexToPathInterfaceIndex(i int) int {
 		idx = 0
 	}
 	return idx
+}
+
+// egressID returns the egress ID from a sequence of IDs (such as that in the metadata field
+// of a snet.Path) given its index. If index is past the length of the sequence, the egress
+// ID 0 is returning, meaning egress ID is that last AS.
+func egressID(ifaces []snet.PathInterface, idx int) uint16 {
+	i := idx * 2
+	if i >= len(ifaces) {
+		return 0
+	}
+	return uint16(ifaces[i].ID)
 }
