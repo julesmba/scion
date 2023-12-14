@@ -54,12 +54,10 @@ type Reservation struct {
 
 	now        time.Time // the current time
 	interfaces []snet.PathInterface
-	flyovers   FlyoverSet // the flyovers used to creatre this reservation
+	flyoverSet FlyoverSet // the flyovers used to creatre this reservation
 }
 
 type Hop struct {
-	BaseHop
-
 	hopfield *hummingbird.FlyoverHopField // dataplane hop field
 	flyover  *Flyover                     // flyover used to build this hop
 }
@@ -77,7 +75,6 @@ func NewReservation(opts ...reservationModFcn) (*Reservation, error) {
 
 	// Create reservation.
 	c.prepareHbirdPath()
-	c.applyFlyovers()
 
 	return c, nil
 }
@@ -109,7 +106,7 @@ type FlyoverSet map[BaseHop][]*Flyover
 
 func WithFlyovers(flyovers FlyoverSet) reservationModFcn {
 	return func(r *Reservation) error {
-		r.flyovers = flyovers
+		r.flyoverSet = flyovers
 		return nil
 	}
 }
@@ -124,13 +121,12 @@ func WithNow(now time.Time) reservationModFcn {
 // func (c *Reservation) prepareHbirdPath(p snet.Path) error {
 func (r *Reservation) prepareHbirdPath() {
 	r.dec.PathMeta.SegLen[0] += 2
-	r.hops = append(r.hops, newHop(
+	r.newHop(
 		r.interfaces[0].IA,
 		0,
 		uint16(r.interfaces[0].ID),
-		// 0,
 		&r.dec.HopFields[0],
-	))
+	)
 
 	// The dataplane path in c.dec contains inf fields and cross-over hops.
 	// Do each segment at a time to ignore the first hop of every segment except the first.
@@ -140,47 +136,32 @@ func (r *Reservation) prepareHbirdPath() {
 		hopCount := int(r.dec.Base.PathMeta.SegLen[infIdx]) / hummingbird.HopLines
 		for i := 1; i < hopCount; i, hopIdx = i+1, hopIdx+1 {
 			r.dec.PathMeta.SegLen[infIdx] += 2
-			r.hops = append(r.hops, newHop(
+			r.newHop(
 				r.interfaces[len(r.hops)*2-1].IA,
 				uint16(r.interfaces[len(r.hops)*2-1].ID),
 				egressID(r.interfaces, len(r.hops)),
 				&r.dec.HopFields[hopIdx],
-			))
+			)
 		}
 	}
 }
 
 func (r *Reservation) Destination() addr.IA {
-	return r.hops[len(r.hops)-1].IA
-}
-
-func (r *Reservation) applyFlyovers() {
-	now := uint32(r.now.Unix())
-	for i, h := range r.hops {
-		flyovers := r.flyovers[h.BaseHop]
-		for _, flyover := range flyovers {
-			if flyover.StartTime <= now && uint32(flyover.Duration) >= now-flyover.StartTime {
-				r.hops[i].flyover = flyover
-				r.hops[i].hopfield.Flyover = true
-				r.dec.NumLines += 2
-				r.hops[i].hopfield.Bw = flyover.Bw
-				r.hops[i].hopfield.Duration = flyover.Duration
-				r.hops[i].hopfield.ResID = flyover.ResID
-				break
-			}
-		}
-	}
+	return r.hops[len(r.hops)-1].flyover.IA
 }
 
 // Sets pathmeta timestamps and increments duplicate detection counter.
 // Updates MACs of all flyoverfields
 // replaces the dataplane of the input snet.path with the finished hummingbird path
-func (r *Reservation) DeriveDataPlanePath(p snet.Path, pktLen uint16,
-	timeStamp time.Time) (snet.Path, error) {
+func (r *Reservation) DeriveDataPlanePath(
+	p snet.Path,
+	pktLen uint16,
+	timeStamp time.Time,
+) (snet.Path, error) {
+
 	if p == nil {
 		return nil, serrors.New("snet path is nil")
 	}
-	var dphb path.Hummingbird
 
 	// Update timestamps
 	secs := uint32(timeStamp.Unix())
@@ -210,6 +191,8 @@ func (r *Reservation) DeriveDataPlanePath(p snet.Path, pktLen uint16,
 		binary.BigEndian.PutUint16(h.hopfield.HopField.Mac[4:],
 			binary.BigEndian.Uint16(flyovermac[4:])^binary.BigEndian.Uint16(h.hopfield.HopField.Mac[4:]))
 	}
+
+	var dphb path.Hummingbird
 	dphb.Raw = make([]byte, r.dec.Len())
 	if err := r.dec.SerializeTo(dphb.Raw); err != nil {
 		return nil, err
@@ -225,15 +208,37 @@ func (r *Reservation) DeriveDataPlanePath(p snet.Path, pktLen uint16,
 	return p, nil
 }
 
-func newHop(ia addr.IA, in, eg uint16, hf *hummingbird.FlyoverHopField) Hop {
-	return Hop{
-		BaseHop: BaseHop{
-			IA:      ia,
-			Ingress: in,
-			Egress:  eg,
-		},
-		hopfield: hf,
+func (r *Reservation) newHop(ia addr.IA, in, eg uint16, hf *hummingbird.FlyoverHopField) {
+	// Look for a valid flyover.
+	now := uint32(r.now.Unix())
+	k := BaseHop{
+		IA:      ia,
+		Ingress: in,
+		Egress:  eg,
 	}
+	flyovers := r.flyoverSet[k]
+	var hopFlyover *Flyover
+	for _, flyover := range flyovers {
+		if flyover.StartTime <= now && uint32(flyover.Duration) >= now-flyover.StartTime {
+			hopFlyover = flyover
+			hf.Flyover = true
+			r.dec.NumLines += 2
+			hf.Bw = flyover.Bw
+			hf.Duration = flyover.Duration
+			hf.ResID = flyover.ResID
+			break
+		}
+	}
+
+	r.hops = append(r.hops, Hop{
+		// BaseHop: BaseHop{
+		// 	IA:      ia,
+		// 	Ingress: in,
+		// 	Egress:  eg,
+		// },
+		hopfield: hf,
+		flyover:  hopFlyover,
+	})
 }
 
 // egressID returns the egress ID from a sequence of IDs (such as that in the metadata field
