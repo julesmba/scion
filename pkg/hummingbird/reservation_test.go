@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/scionproto/scion/pkg/hummingbird"
+	"github.com/scionproto/scion/pkg/snet/path"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,9 +39,17 @@ func TestPrepareHbirdPath(t *testing.T) {
 	hbirdPath, err := getHbirdFlyoversSnetPath(fixedTime)
 	assert.NoError(t, err)
 
-	output, err := c.DeriveDataPlanePath(scionPath, 16, fixedTime)
+	// output, err := c.DeriveDataPlanePath(scionPath, 16, fixedTime)
+	decoded := c.DeriveDataPlanePath(16, fixedTime)
+	raw := path.Hummingbird{
+		Raw: make([]byte, decoded.Len()),
+	}
+	err = decoded.SerializeTo(raw.Raw)
 	assert.NoError(t, err)
-	assert.Equal(t, hbirdPath, output)
+	scionPath.DataplanePath = raw
+
+	assert.NoError(t, err)
+	assert.Equal(t, hbirdPath, scionPath)
 }
 
 func flyoverSliceToMap(flyovers []hummingbird.Flyover) hummingbird.FlyoverSet {

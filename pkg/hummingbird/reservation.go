@@ -118,7 +118,9 @@ func WithNow(now time.Time) reservationModFcn {
 	}
 }
 
-// func (c *Reservation) prepareHbirdPath(p snet.Path) error {
+// prepareHbirdPath uses the decoded hummingbird path to walk each hop of each segment,
+// and tries to find a suitable flyover and assign it to each hop.
+// Crossover (xover) hops are treated by setting the flyover on the first hop.
 func (r *Reservation) prepareHbirdPath() {
 	r.dec.PathMeta.SegLen[0] += 2
 	r.newHop(
@@ -150,18 +152,12 @@ func (r *Reservation) Destination() addr.IA {
 	return r.hops[len(r.hops)-1].flyover.IA
 }
 
-// Sets pathmeta timestamps and increments duplicate detection counter.
-// Updates MACs of all flyoverfields
-// replaces the dataplane of the input snet.path with the finished hummingbird path
+// DeriveDataPlanePath sets pathmeta timestamps and increments duplicate detection counter and
+// updates MACs of all flyoverfields.
 func (r *Reservation) DeriveDataPlanePath(
-	p snet.Path,
 	pktLen uint16,
 	timeStamp time.Time,
-) (snet.Path, error) {
-
-	if p == nil {
-		return nil, serrors.New("snet path is nil")
-	}
+) *hummingbird.Decoded {
 
 	// Update timestamps
 	secs := uint32(timeStamp.Unix())
@@ -192,20 +188,7 @@ func (r *Reservation) DeriveDataPlanePath(
 			binary.BigEndian.Uint16(flyovermac[4:])^binary.BigEndian.Uint16(h.hopfield.HopField.Mac[4:]))
 	}
 
-	var dphb path.Hummingbird
-	dphb.Raw = make([]byte, r.dec.Len())
-	if err := r.dec.SerializeTo(dphb.Raw); err != nil {
-		return nil, err
-	}
-	switch v := p.(type) {
-	case path.Path:
-		v.DataplanePath = dphb
-		p = v
-	default:
-		return nil, serrors.New("Unsupported snet path struct", "path", p)
-	}
-
-	return p, nil
+	return &r.dec
 }
 
 func (r *Reservation) newHop(ia addr.IA, in, eg uint16, hf *hummingbird.FlyoverHopField) {
