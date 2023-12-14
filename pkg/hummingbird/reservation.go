@@ -122,50 +122,50 @@ func WithNow(now time.Time) reservationModFcn {
 }
 
 // func (c *Reservation) prepareHbirdPath(p snet.Path) error {
-func (c *Reservation) prepareHbirdPath() {
-	c.dec.PathMeta.SegLen[0] += 2
-	c.hops = append(c.hops, newHop(
-		c.interfaces[0].IA,
+func (r *Reservation) prepareHbirdPath() {
+	r.dec.PathMeta.SegLen[0] += 2
+	r.hops = append(r.hops, newHop(
+		r.interfaces[0].IA,
 		0,
-		uint16(c.interfaces[0].ID),
+		uint16(r.interfaces[0].ID),
 		// 0,
-		&c.dec.HopFields[0],
+		&r.dec.HopFields[0],
 	))
 
 	// The dataplane path in c.dec contains inf fields and cross-over hops.
 	// Do each segment at a time to ignore the first hop of every segment except the first.
 	hopIdx := 1 // the index of the current hop in the dataplane.
-	for infIdx := 0; infIdx < c.dec.NumINF; infIdx, hopIdx = infIdx+1, hopIdx+1 {
+	for infIdx := 0; infIdx < r.dec.NumINF; infIdx, hopIdx = infIdx+1, hopIdx+1 {
 		// Preserve the hopcount locally, as we modify it inside the loop itself.
-		hopCount := int(c.dec.Base.PathMeta.SegLen[infIdx]) / hummingbird.HopLines
+		hopCount := int(r.dec.Base.PathMeta.SegLen[infIdx]) / hummingbird.HopLines
 		for i := 1; i < hopCount; i, hopIdx = i+1, hopIdx+1 {
-			c.dec.PathMeta.SegLen[infIdx] += 2
-			c.hops = append(c.hops, newHop(
-				c.interfaces[len(c.hops)*2-1].IA,
-				uint16(c.interfaces[len(c.hops)*2-1].ID),
-				egressID(c.interfaces, len(c.hops)),
-				&c.dec.HopFields[hopIdx],
+			r.dec.PathMeta.SegLen[infIdx] += 2
+			r.hops = append(r.hops, newHop(
+				r.interfaces[len(r.hops)*2-1].IA,
+				uint16(r.interfaces[len(r.hops)*2-1].ID),
+				egressID(r.interfaces, len(r.hops)),
+				&r.dec.HopFields[hopIdx],
 			))
 		}
 	}
 }
 
-func (c *Reservation) Destination() addr.IA {
-	return c.hops[len(c.hops)-1].IA
+func (r *Reservation) Destination() addr.IA {
+	return r.hops[len(r.hops)-1].IA
 }
 
-func (c *Reservation) applyFlyovers() {
-	now := uint32(c.now.Unix())
-	for i, h := range c.hops {
-		flyovers := c.flyovers[h.BaseHop]
+func (r *Reservation) applyFlyovers() {
+	now := uint32(r.now.Unix())
+	for i, h := range r.hops {
+		flyovers := r.flyovers[h.BaseHop]
 		for _, flyover := range flyovers {
 			if flyover.StartTime <= now && uint32(flyover.Duration) >= now-flyover.StartTime {
-				c.hops[i].flyover = flyover
-				c.hops[i].hopfield.Flyover = true
-				c.dec.NumLines += 2
-				c.hops[i].hopfield.Bw = flyover.Bw
-				c.hops[i].hopfield.Duration = flyover.Duration
-				c.hops[i].hopfield.ResID = flyover.ResID
+				r.hops[i].flyover = flyover
+				r.hops[i].hopfield.Flyover = true
+				r.dec.NumLines += 2
+				r.hops[i].hopfield.Bw = flyover.Bw
+				r.hops[i].hopfield.Duration = flyover.Duration
+				r.hops[i].hopfield.ResID = flyover.ResID
 				break
 			}
 		}
@@ -175,7 +175,7 @@ func (c *Reservation) applyFlyovers() {
 // Sets pathmeta timestamps and increments duplicate detection counter.
 // Updates MACs of all flyoverfields
 // replaces the dataplane of the input snet.path with the finished hummingbird path
-func (c *Reservation) DeriveDataPlanePath(p snet.Path, pktLen uint16,
+func (r *Reservation) DeriveDataPlanePath(p snet.Path, pktLen uint16,
 	timeStamp time.Time) (snet.Path, error) {
 	if p == nil {
 		return nil, serrors.New("snet path is nil")
@@ -185,24 +185,24 @@ func (c *Reservation) DeriveDataPlanePath(p snet.Path, pktLen uint16,
 	// Update timestamps
 	secs := uint32(timeStamp.Unix())
 	millis := uint32(timeStamp.Nanosecond()/1000) << 22
-	millis |= c.counter
-	c.dec.Base.PathMeta.BaseTS = secs
-	c.dec.Base.PathMeta.HighResTS = millis
+	millis |= r.counter
+	r.dec.Base.PathMeta.BaseTS = secs
+	r.dec.Base.PathMeta.HighResTS = millis
 	//increment counter for next packet
-	if c.counter >= 1<<22-1 {
-		c.counter = 0
+	if r.counter >= 1<<22-1 {
+		r.counter = 0
 	} else {
-		c.counter += 1
+		r.counter += 1
 	}
 	// compute Macs for Flyovers
 	var byteBuffer [hummingbird.FlyoverMacBufferSize]byte
 	var xkbuffer [hummingbird.XkBufferSize]uint32
-	for _, h := range c.hops {
+	for _, h := range r.hops {
 		if !h.hopfield.Flyover {
 			continue
 		}
 		h.hopfield.ResStartTime = uint16(secs - h.flyover.StartTime)
-		flyovermac := hummingbird.FullFlyoverMac(h.flyover.Ak[:], c.Destination(), pktLen,
+		flyovermac := hummingbird.FullFlyoverMac(h.flyover.Ak[:], r.Destination(), pktLen,
 			h.hopfield.ResStartTime, millis, byteBuffer[:], xkbuffer[:])
 
 		binary.BigEndian.PutUint32(h.hopfield.HopField.Mac[:4],
@@ -210,8 +210,8 @@ func (c *Reservation) DeriveDataPlanePath(p snet.Path, pktLen uint16,
 		binary.BigEndian.PutUint16(h.hopfield.HopField.Mac[4:],
 			binary.BigEndian.Uint16(flyovermac[4:])^binary.BigEndian.Uint16(h.hopfield.HopField.Mac[4:]))
 	}
-	dphb.Raw = make([]byte, c.dec.Len())
-	if err := c.dec.SerializeTo(dphb.Raw); err != nil {
+	dphb.Raw = make([]byte, r.dec.Len())
+	if err := r.dec.SerializeTo(dphb.Raw); err != nil {
 		return nil, err
 	}
 	switch v := p.(type) {
