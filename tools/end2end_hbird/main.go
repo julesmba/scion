@@ -323,13 +323,13 @@ func (c *client) attemptRequest(n int) bool {
 				return false
 			}
 			secs := uint32(time.Now().Unix())
-			res, err := hbirdClient.RequestReservationsAllHops(16, secs, 120)
+			res, err := hbirdClient.RequestFlyoversAllHops(16, secs, 120)
 			if err != nil {
 				logger.Error("Error requesting reservations", "err", err)
 				return false
 			}
 
-			if err := hbirdClient.ApplyReservations(res); err != nil {
+			if err := hbirdClient.Applyflyovers(res); err != nil {
 				logger.Error("Error applying reservations", "err", err)
 			}
 
@@ -353,13 +353,13 @@ func (c *client) attemptRequest(n int) bool {
 			}
 			ases = ases[:n]
 			secs := uint32(time.Now().Unix())
-			res, err := hummingbird.RequestReservationForASes(ases, 16, secs, 120)
+			res, err := hummingbird.RequestFlyoversForASes(ases, 16, secs, 120)
 			if err != nil {
 				logger.Error("Error requesting reservations", "err", err)
 				return false
 			}
 
-			if err := hbirdClient.ApplyReservations(res); err != nil {
+			if err := hbirdClient.Applyflyovers(res); err != nil {
 				logger.Error("Error applying reservations", "err", err)
 			}
 

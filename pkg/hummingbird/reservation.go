@@ -63,10 +63,10 @@ type Hop struct {
 	hopfield *hummingbird.FlyoverHopField
 	// The Index of the Segment the above hopfield is part of.
 	infIdx int
-	// The reservations that can be used for this hop.
-	// The reservation at index 0 is the one used to build the path
+	// The flyovers that can be used for this hop.
+	// The flyover at index 0 is the one used to build the path
 	// MUST be non-empty if hopfield.Flyiver == true
-	reservations []Flyover
+	flyovers []Flyover
 	// The original scion mac of the corresponding hopfield.
 	scionMac [6]byte
 }
@@ -79,80 +79,6 @@ func NewReservation(p snet.Path, flyovers map[addr.IA][]*Flyover) (*Reservation,
 	}
 	c.applyFlyovers(flyovers)
 	return c, nil
-}
-
-// prepareHbirdPathOlD prepares as hummingbird path and initializes the Resevation object.
-func (c *Reservation) prepareHbirdPathOlD(p snet.Path) error {
-	if p == nil {
-		return serrors.New("Empty path")
-	}
-	c.dec = hummingbird.Decoded{}
-	switch v := p.Dataplane().(type) {
-	case path.SCION:
-		// Convert path to decoded hbird path
-		scionDec := scion.Decoded{}
-		if err := scionDec.DecodeFromBytes(v.Raw); err != nil {
-			return serrors.Join(err, serrors.New("Failed to Prepare Hummingbird Path"))
-		}
-		c.dec.ConvertFromScionDecoded(scionDec)
-	case path.Hummingbird:
-		if err := c.dec.DecodeFromBytes(v.Raw); err != nil {
-			return serrors.Join(err, serrors.New("Failed to Prepare Hummingbird Path"))
-		}
-	default:
-		return serrors.New("Unsupported path type")
-	}
-
-	// Initialize a hop for each traversed AS.
-	infIdx := 0
-	for i := 0; i < len(c.dec.HopFields); i++ {
-		// Determine the segment index and whether the hop is a cross over or not.
-		var xover bool
-		for ; infIdx < 2; infIdx++ {
-			if i < int(c.dec.FirstHopPerSeg[infIdx]) {
-				if !c.dec.InfoFields[infIdx].Peer {
-					xover = (i == int(c.dec.FirstHopPerSeg[infIdx])-1) &&
-						i < len(c.dec.HopFields)-1
-				}
-				break
-			}
-		}
-
-		// If not first segment, check if this hop is the first one after a xover.
-		if infIdx > 0 &&
-			!c.dec.InfoFields[infIdx].Peer &&
-			i == int(c.dec.FirstHopPerSeg[infIdx-1]) &&
-			i < len(c.dec.HopFields)-1 {
-
-			// First hop after Crossover, nothing to be done.
-			continue
-		}
-
-		// Setting egress: if crossing over then egress ID comes from the next hop in next segment.
-		offset := 0
-		if xover {
-			offset = 1
-		}
-		// We use the path metadata to get the IA from it. This sequence of interfaces does not
-		// include the egress-to-ingress crossed over in the core AS.
-		pathInterfaces := p.Metadata().Interfaces
-
-		c.hops = append(c.hops, Hop{
-			BaseHop: BaseHop{
-				// To get the current PathInterface we use `len(c.hops)` instead of `i` because
-				// we want to skip those crossed-over interfaces.
-				IA:      pathInterfaces[hopIndexToPathInterfaceIndex(len(c.hops))].IA,
-				Ingress: getIfaceID(c.dec, infIdx, i, false),
-				Egress:  getIfaceID(c.dec, infIdx+offset, i+offset, true),
-			},
-			infIdx:       infIdx,
-			hopfield:     &c.dec.HopFields[i],
-			scionMac:     c.dec.HopFields[i].HopField.Mac,
-			reservations: make([]Flyover, 0, 2),
-		})
-	}
-
-	return nil
 }
 
 func (c *Reservation) prepareHbirdPath(p snet.Path) error {
@@ -199,23 +125,7 @@ func (c *Reservation) prepareHbirdPath(p snet.Path) error {
 	return nil
 }
 
-func iaID(ifaces []snet.PathInterface, idx int) addr.IA {
-	i := idx*2 - 1
-	if i < 0 {
-		i = 0
-	}
-	return ifaces[i].IA
-}
-
-func ingressID(ifaces []snet.PathInterface, idx int) uint16 {
-	i := idx*2 - 1
-	if i < 0 {
-		return 0
-	}
-	return uint16(ifaces[i].ID)
-}
-
-// For each hop in the path, returns a reservation containing the AS, Ingress and Egress of that hop
+// For each hop in the path, returns a flyover containing the AS, Ingress and Egress of that hop
 func (c *Reservation) GetPathASes() []BaseHop {
 	hops := make([]BaseHop, len(c.hops))
 	for i, h := range c.hops {
@@ -230,12 +140,12 @@ func (c *Reservation) Destination() addr.IA {
 	return c.hops[len(c.hops)-1].IA
 }
 
-// Request reservations for the full path
+// Request flyovers for the full path
 // bw: the bandwidth to request
-// start: The start time of the reservation, in unix seconds
-// duration: The duration of the reservation in seconds
+// start: The start time of the flyover, in unix seconds
+// duration: The duration of the flyover in seconds
 // TODO: add async version once we have request api
-func (c *Reservation) RequestReservationsAllHops(
+func (c *Reservation) RequestFlyoversAllHops(
 	bw uint16, start uint32, duration uint16) ([]Flyover, error) {
 	hops := make([]BaseHop, len(c.hops))
 	for i, h := range c.hops {
@@ -244,18 +154,18 @@ func (c *Reservation) RequestReservationsAllHops(
 		hops[i].Egress = h.Egress
 	}
 
-	return RequestReservationForASes(hops, bw, start, duration)
+	return RequestFlyoversForASes(hops, bw, start, duration)
 }
 
-// Requests new reservations for the listed Hops and returns them once they are obtained
-// TODO: add timeout after which already received reservations
+// Requests new flyovers for the listed Hops and returns them once they are obtained
+// TODO: add timeout after which already received flyovers
 // (if any) are returned once we have actual requests
 // TODO: add fully async version of this
-func RequestReservationForASes(
+func RequestFlyoversForASes(
 	hops []BaseHop, bw uint16, start uint32, duration uint16) ([]Flyover, error) {
 
-	log.Debug("Requesting reservations for", "Hops", hops)
-	reservations := make([]Flyover, len(hops))
+	log.Debug("Requesting flyovers for", "Hops", hops)
+	flyovers := make([]Flyover, len(hops))
 	for i, h := range hops {
 		//TODO: Once we have API for requests
 		// Request (AS, ingress, egress, bw, start, duration)
@@ -263,31 +173,31 @@ func RequestReservationForASes(
 		// Temporary Cheating
 		// Current implementation cheats by writing data directly into c.hops instead
 
-		reservations[i].IA = h.IA
-		reservations[i].Ingress = h.Ingress
-		reservations[i].Egress = h.Egress
-		reservations[i].Bw = bw
-		reservations[i].StartTime = start
-		reservations[i].Duration = duration
+		flyovers[i].IA = h.IA
+		flyovers[i].Ingress = h.Ingress
+		flyovers[i].Egress = h.Egress
+		flyovers[i].Bw = bw
+		flyovers[i].StartTime = start
+		flyovers[i].Duration = duration
 
 		var err error
-		reservations[i], err = cheat_auth_key(&reservations[i])
+		flyovers[i], err = cheat_auth_key(&flyovers[i])
 		if err != nil {
 			return nil, err
 		}
 	}
-	return reservations, nil
+	return flyovers, nil
 }
 
 // Adds the listed reservations to the path
-func (c *Reservation) ApplyReservations(flyovers []Flyover) error {
-	log.Debug("Applying reservations", "reservations", flyovers)
+func (c *Reservation) Applyflyovers(flyovers []Flyover) error {
+	log.Debug("Applying flyovers", "flyovers", flyovers)
 	for _, f := range flyovers {
 		for j, h := range c.hops {
 			if f.IA == h.IA {
 				if f.Ingress == h.Ingress && f.Egress == h.Egress {
-					c.hops[j].reservations = append(c.hops[j].reservations, f)
-					if len(c.hops[j].reservations) == 1 {
+					c.hops[j].flyovers = append(c.hops[j].flyovers, f)
+					if len(c.hops[j].flyovers) == 1 {
 						c.hops[j].hopfield.Flyover = true
 						c.dec.NumLines += 2
 						c.dec.PathMeta.SegLen[h.infIdx] += 2
@@ -296,7 +206,7 @@ func (c *Reservation) ApplyReservations(flyovers []Flyover) error {
 						c.hops[j].hopfield.ResID = f.ResID
 					}
 				} else {
-					// TODO: inform caller that this reservation cannot be set on this path
+					// TODO: inform caller that this flyover cannot be set on this path
 					break
 				}
 			}
@@ -310,7 +220,7 @@ func (c *Reservation) applyFlyovers(flyovers map[addr.IA][]*Flyover) {
 		flyovers := flyovers[h.IA]
 		for _, flyover := range flyovers {
 			if flyover.Ingress == h.Ingress && flyover.Egress == h.Egress {
-				c.hops[i].reservations = append(c.hops[i].reservations, *flyover)
+				c.hops[i].flyovers = append(c.hops[i].flyovers, *flyover)
 				c.hops[i].hopfield.Flyover = true
 				c.dec.NumLines += 2
 				c.dec.PathMeta.SegLen[h.infIdx] += 2
@@ -323,54 +233,54 @@ func (c *Reservation) applyFlyovers(flyovers map[addr.IA][]*Flyover) {
 	}
 }
 
-// Returns all the reservations that the client may currently use
-// If there are multiple reservations for a hop,
+// Returns all the flyovers that the client may currently use
+// If there are multiple flyovers for a hop,
 // The one currently used is the first appearing in the returned array
-func (c *Reservation) GetUsedReservations() []Flyover {
+func (c *Reservation) GetUsedFlyovers() []Flyover {
 	res := make([]Flyover, 0, len(c.hops))
 	for _, h := range c.hops {
-		res = append(res, h.reservations...)
+		res = append(res, h.flyovers...)
 	}
 	return res
 }
 
-// Removes the reservation with the given resID from a hop
-func (c *Reservation) removeReservation(hopIdx int, resID uint32) {
+// Removes the flyovers with the given resID from a hop.
+func (c *Reservation) removeFlyover(hopIdx int, resID uint32) {
 	h := &c.hops[hopIdx]
-	for i, r := range h.reservations {
+	for i, r := range h.flyovers {
 		if r.ResID == resID {
 			if i == 0 {
-				if len(h.reservations) == 1 {
+				if len(h.flyovers) == 1 {
 					h.hopfield.Flyover = false
 					c.dec.NumLines -= 2
 					c.dec.PathMeta.SegLen[c.hops[hopIdx].infIdx] -= 2
-					h.reservations = []Flyover{}
+					h.flyovers = []Flyover{}
 				} else {
-					copy(h.reservations[:], h.reservations[1:])
-					h.reservations = h.reservations[:len(h.reservations)-1]
-					h.hopfield.Bw = h.reservations[0].Bw
-					h.hopfield.ResID = h.reservations[0].ResID
-					h.hopfield.Duration = h.reservations[0].Duration
+					copy(h.flyovers[:], h.flyovers[1:])
+					h.flyovers = h.flyovers[:len(h.flyovers)-1]
+					h.hopfield.Bw = h.flyovers[0].Bw
+					h.hopfield.ResID = h.flyovers[0].ResID
+					h.hopfield.Duration = h.flyovers[0].Duration
 				}
 			} else {
-				if i < len(h.reservations)-1 {
-					copy(h.reservations[i:], h.reservations[i+1:])
+				if i < len(h.flyovers)-1 {
+					copy(h.flyovers[i:], h.flyovers[i+1:])
 				}
-				h.reservations = h.reservations[:len(h.reservations)-1]
+				h.flyovers = h.flyovers[:len(h.flyovers)-1]
 			}
 			break
 		}
 	}
 }
 
-// Removes res from the reservations the client is allowed to use
-// Reservations are identified based on their AS and ResID
-// Does NOT check for validity of remaining reservations
-func (c *Reservation) RemoveReservations(res []Flyover) error {
-	for _, r := range res {
+// Removes res from the flyovers the client is allowed to use
+// Flyovers are identified based on their AS and ResID
+// Does NOT check for validity of remaining flyovers.
+func (c *Reservation) RemoveFlyovers(flyovers []Flyover) error {
+	for _, r := range flyovers {
 		for i, h := range c.hops {
 			if r.IA == h.IA {
-				c.removeReservation(i, r.ResID)
+				c.removeFlyover(i, r.ResID)
 				break
 			}
 		}
@@ -378,24 +288,24 @@ func (c *Reservation) RemoveReservations(res []Flyover) error {
 	return nil
 }
 
-// Checks whether any current reservation that has expired or will expire in t seconds
-// If yes, remove reservation from list of used reservations
-func (c *Reservation) CheckExpiry(t uint32) {
+// Checks whether any current flyover that has expired or will expire in t seconds
+// If yes, remove flyover from list of used flyovers.
+func (c *Reservation) CheckExpiry(duration uint32) {
 	now := uint32(time.Now().Unix())
 	for i := range c.hops {
 
-		// Remove expired reservations
-		for j := 0; j < len(c.hops[i].reservations); {
-			if c.hops[i].reservations[j].StartTime+uint32(c.hops[i].reservations[j].Duration) <
-				(now + t) {
-				copy(c.hops[i].reservations[j:], c.hops[i].reservations[j+1:])
-				c.hops[i].reservations = c.hops[i].reservations[:len(c.hops[i].reservations)-1]
+		// Remove expired flyovers.
+		for j := 0; j < len(c.hops[i].flyovers); {
+			if c.hops[i].flyovers[j].StartTime+uint32(c.hops[i].flyovers[j].Duration) <
+				(now + duration) {
+				copy(c.hops[i].flyovers[j:], c.hops[i].flyovers[j+1:])
+				c.hops[i].flyovers = c.hops[i].flyovers[:len(c.hops[i].flyovers)-1]
 			} else {
 				j++
 			}
 		}
 
-		if len(c.hops[i].reservations) == 0 {
+		if len(c.hops[i].flyovers) == 0 {
 			if c.hops[i].hopfield.Flyover {
 				c.hops[i].hopfield.Flyover = false
 				c.dec.NumLines -= 2
@@ -403,28 +313,28 @@ func (c *Reservation) CheckExpiry(t uint32) {
 			}
 			continue
 		}
-		// If there's any currently valid reservation, put it to the front
-		if !(c.hops[i].reservations[0].StartTime <= now) {
-			for j := 1; j < len(c.hops[i].reservations); j++ {
-				if c.hops[i].reservations[j].StartTime <= now {
-					temp := c.hops[i].reservations[0]
-					c.hops[i].reservations[0] = c.hops[i].reservations[j]
-					c.hops[i].reservations[j] = temp
+		// If there's any currently valid flyover, put it to the front
+		if !(c.hops[i].flyovers[0].StartTime <= now) {
+			for j := 1; j < len(c.hops[i].flyovers); j++ {
+				if c.hops[i].flyovers[j].StartTime <= now {
+					temp := c.hops[i].flyovers[0]
+					c.hops[i].flyovers[0] = c.hops[i].flyovers[j]
+					c.hops[i].flyovers[j] = temp
 					break
 				}
 			}
 		}
 
-		// Check whether reservation at the front is currently valid
-		if c.hops[i].reservations[0].StartTime <= now {
+		// Check whether flyover at the front is currently valid
+		if c.hops[i].flyovers[0].StartTime <= now {
 			if !c.hops[i].hopfield.Flyover {
 				c.hops[i].hopfield.Flyover = true
 				c.dec.NumLines += 2
 				c.dec.PathMeta.SegLen[c.hops[i].infIdx] += 2
 			}
-			c.hops[i].hopfield.Bw = c.hops[i].reservations[0].Bw
-			c.hops[i].hopfield.Duration = c.hops[i].reservations[0].Duration
-			c.hops[i].hopfield.ResID = c.hops[i].reservations[0].ResID
+			c.hops[i].hopfield.Bw = c.hops[i].flyovers[0].Bw
+			c.hops[i].hopfield.Duration = c.hops[i].flyovers[0].Duration
+			c.hops[i].hopfield.ResID = c.hops[i].flyovers[0].ResID
 		} else {
 			if c.hops[i].hopfield.Flyover {
 				c.hops[i].hopfield.Flyover = false
@@ -462,7 +372,7 @@ func (c *Reservation) FinalizePath(p snet.Path, pktLen uint16,
 		if !h.hopfield.Flyover {
 			continue
 		}
-		res := h.reservations[0]
+		res := h.flyovers[0]
 		h.hopfield.ResStartTime = uint16(secs - res.StartTime)
 		flyovermac := hummingbird.FullFlyoverMac(res.Ak[:], c.Destination(), pktLen,
 			h.hopfield.ResStartTime, millis, c.byteBuffer[:], c.xkbuffer[:])
@@ -494,10 +404,10 @@ func newHop(ia addr.IA, in, eg uint16, infIdx int, hf *hummingbird.FlyoverHopFie
 			Ingress: in,
 			Egress:  eg,
 		},
-		infIdx:       infIdx,
-		hopfield:     hf,
-		scionMac:     hf.HopField.Mac,
-		reservations: make([]Flyover, 0, 2),
+		infIdx:   infIdx,
+		hopfield: hf,
+		scionMac: hf.HopField.Mac,
+		flyovers: make([]Flyover, 0, 2),
 	}
 }
 

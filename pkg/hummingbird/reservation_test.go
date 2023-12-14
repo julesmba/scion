@@ -152,11 +152,11 @@ func TestCheckReservationExpiry(t *testing.T) {
 	c, err := hummingbird.NewReservation(scionPath, nil)
 	assert.NoError(t, err)
 
-	err = c.ApplyReservations(input)
+	err = c.Applyflyovers(input)
 	assert.NoError(t, err)
 
 	c.CheckExpiry(5)
-	assert.Equal(t, expected, c.GetUsedReservations())
+	assert.Equal(t, expected, c.GetUsedFlyovers())
 
 	// Verify last reservation is unused as it is not yet valid
 	scionPath = getScionSnetPath(t)
@@ -179,7 +179,7 @@ func TestRemoveReservations(t *testing.T) {
 	c, err := hummingbird.NewReservation(scionPath, nil)
 	require.NoError(t, err)
 
-	err = c.ApplyReservations(testFlyovers)
+	err = c.Applyflyovers(testFlyovers)
 	assert.NoError(t, err)
 
 	remove := []hummingbird.Flyover{
@@ -222,10 +222,10 @@ func TestRemoveReservations(t *testing.T) {
 		},
 	}
 
-	err = c.RemoveReservations(remove)
+	err = c.RemoveFlyovers(remove)
 	assert.NoError(t, err)
 
-	output := c.GetUsedReservations()
+	output := c.GetUsedFlyovers()
 	assert.Equal(t, expected, output)
 
 	// Verify removal has resulted in correct path
