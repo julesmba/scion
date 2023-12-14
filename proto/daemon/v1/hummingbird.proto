@@ -55,12 +55,20 @@ message Flyover {
     uint32 ingress = 2;
     // Egress ID. 16 bits.
     uint32 egress = 3;
+
     // Bandwidth. 16 bits.
     uint32 bw = 4;
+    // The unix timestamp when the reservation starts.
+    uint32 start_time = 5;
     // Duration in seconds. 16 bits.
-    uint32 duration = 5;
-    // Endtime is the unix timestamp when the reservation is no longer valid.
-    uint32 endtime = 6;
+    uint32 duration = 6;
+
+    // Reservation ID, unique per AS.
+    uint32 res_id = 7;
+    // This Ak is the derived key for this flyover, that is used to derive the per-host key.
+    // It is 16 bytes long.
+    bytes ak = 8;
+
 }
 
 message Reservation {
