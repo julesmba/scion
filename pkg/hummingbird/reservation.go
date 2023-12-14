@@ -72,14 +72,13 @@ type Hop struct {
 }
 
 func NewReservation(p snet.Path, flyovers map[addr.IA][]*Flyover) (*Reservation, error) {
-	// deleteme
-	// func NewReservation(p snet.Path) (*Reservation, error) {
 	c := &Reservation{}
 	err := c.prepareHbirdPath(p)
-	if err == nil {
-		c.applyFlyovers(flyovers)
+	if err != nil {
+		return nil, err
 	}
-	return c, err
+	c.applyFlyovers(flyovers)
+	return c, nil
 }
 
 // prepareHbirdPathOlD prepares as hummingbird path and initializes the Resevation object.

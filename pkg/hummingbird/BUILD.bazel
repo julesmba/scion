@@ -4,7 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "hummingbird.go",
-        "resevation.go",
+        "reservation.go",
     ],
     importpath = "github.com/scionproto/scion/pkg/hummingbird",
     visibility = ["//visibility:public"],
@@ -25,7 +25,7 @@ go_test(
     name = "go_default_test",
     srcs = [
         "hummingbird_test.go",
-        "resevation_test.go",
+        "reservation_test.go",
         "utils_test.go",
     ],
     deps = [
