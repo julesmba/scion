@@ -41,6 +41,35 @@ var testHops = []hummingbird.BaseHop{
 }
 
 var testFlyovers = []hummingbird.Flyover{
+	// For the first hop:
+	{
+		BaseHop:   testHops[0],
+		ResID:     1234,
+		Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+		Bw:        16,
+		Duration:  70,
+		StartTime: uint32(fixedTime.Unix()) - 80, // expired
+	},
+	{
+		BaseHop: hummingbird.BaseHop{
+			IA:      testHops[0].IA,
+			Ingress: testHops[0].Ingress,
+			Egress:  testHops[0].Egress + 1, // not the expected egress
+		},
+		ResID:     1234,
+		Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+		Bw:        16,
+		Duration:  120,
+		StartTime: uint32(fixedTime.Unix()) - 10,
+	},
+	{
+		BaseHop:   testHops[0],
+		ResID:     1234,
+		Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+		Bw:        16,
+		Duration:  120,
+		StartTime: uint32(fixedTime.Unix()) - 1000, // expired
+	},
 	{
 		BaseHop:   testHops[0],
 		ResID:     1234,
@@ -49,6 +78,16 @@ var testFlyovers = []hummingbird.Flyover{
 		Duration:  120,
 		StartTime: uint32(fixedTime.Unix()) - 10,
 	},
+
+	// For the second hop:
+	{
+		BaseHop:   testHops[1],
+		ResID:     42,
+		Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1, 0},
+		Bw:        16,
+		Duration:  180,
+		StartTime: uint32(fixedTime.Unix()) - 1000,
+	},
 	{
 		BaseHop:   testHops[1],
 		ResID:     42,
@@ -56,6 +95,16 @@ var testFlyovers = []hummingbird.Flyover{
 		Bw:        16,
 		Duration:  180,
 		StartTime: uint32(fixedTime.Unix()) - 32,
+	},
+
+	// For the third hop:
+	{
+		BaseHop:   testHops[2],
+		ResID:     365,
+		Ak:        [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7},
+		Bw:        20,
+		Duration:  150,
+		StartTime: uint32(fixedTime.Unix()) + 1, // not yet valid
 	},
 	{
 		BaseHop:   testHops[2],
@@ -76,7 +125,7 @@ var testFlyovers = []hummingbird.Flyover{
 }
 
 func TestConvertToHbirdPath(t *testing.T) {
-	scionPath:= getScionSnetPath(t)
+	scionPath := getScionSnetPath(t)
 
 	now := time.Now()
 	expectecPath, err := getHbirdNoFlyoversSnetPath(now)

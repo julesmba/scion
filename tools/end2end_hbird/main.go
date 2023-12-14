@@ -315,55 +315,57 @@ func (c *client) attemptRequest(n int) bool {
 				return false
 			}
 			remote.Path = path.Dataplane()
-		} else if !partial {
-			// full path with reservations
-			hbirdClient, err := hummingbird.NewReservation(path, nil)
-			if err != nil {
-				logger.Error("Error converting path to Hummingbird", "err", err)
-				return false
-			}
-			secs := uint32(time.Now().Unix())
-			res, err := hbirdClient.RequestFlyoversAllHops(16, secs, 120)
-			if err != nil {
-				logger.Error("Error requesting reservations", "err", err)
-				return false
-			}
+			// } else if !partial {
+			// 	// full path with reservations
+			// 	hbirdClient, err := hummingbird.NewReservation(path, nil)
+			// 	if err != nil {
+			// 		logger.Error("Error converting path to Hummingbird", "err", err)
+			// 		return false
+			// 	}
+			// 	secs := uint32(time.Now().Unix())
+			// 	res, err := hbirdClient.RequestFlyoversAllHops(16, secs, 120)
+			// 	if err != nil {
+			// 		logger.Error("Error requesting reservations", "err", err)
+			// 		return false
+			// 	}
 
-			if err := hbirdClient.Applyflyovers(res); err != nil {
-				logger.Error("Error applying reservations", "err", err)
-			}
+			// 	if err := hbirdClient.Applyflyovers(res); err != nil {
+			// 		logger.Error("Error applying reservations", "err", err)
+			// 	}
 
-			path, err = hbirdClient.FinalizePath(path, pingPayloadLen, time.Now())
-			if err != nil {
-				logger.Error("Error assembling hummingbird path", "err", err)
-			}
-			remote.Path = path.Dataplane()
+			// 	path, err = hbirdClient.FinalizePath(path, pingPayloadLen, time.Now())
+			// 	if err != nil {
+			// 		logger.Error("Error assembling hummingbird path", "err", err)
+			// 	}
+			// 	remote.Path = path.Dataplane()
 		} else {
 			//partial reservations, alternating resrved and not reserved
-			hbirdClient, err := hummingbird.NewReservation(path, nil)
+			hbirdClient, err := hummingbird.NewReservation(
+				hummingbird.WithPath(path), hummingbird.WithFlyovers(nil))
+			// hbirdClient, err := hummingbird.NewReservation(path, nil)
 			if err != nil {
 				logger.Error("Error converting path to Hummingbird", "err", err)
 				return false
 			}
-			ases := hbirdClient.GetPathASes()
-			n := len(ases)
-			for i := 1; i < n; i++ {
-				copy(ases[i:n-1], ases[i+1:n])
-				n--
-			}
-			ases = ases[:n]
-			secs := uint32(time.Now().Unix())
-			res, err := hummingbird.RequestFlyoversForASes(ases, 16, secs, 120)
-			if err != nil {
-				logger.Error("Error requesting reservations", "err", err)
-				return false
-			}
+			// ases := hbirdClient.GetPathASes()
+			// n := len(ases)
+			// for i := 1; i < n; i++ {
+			// 	copy(ases[i:n-1], ases[i+1:n])
+			// 	n--
+			// }
+			// ases = ases[:n]
+			// secs := uint32(time.Now().Unix())
+			// res, err := hummingbird.RequestFlyoversForASes(ases, 16, secs, 120)
+			// if err != nil {
+			// 	logger.Error("Error requesting reservations", "err", err)
+			// 	return false
+			// }
 
-			if err := hbirdClient.Applyflyovers(res); err != nil {
-				logger.Error("Error applying reservations", "err", err)
-			}
+			// if err := hbirdClient.Applyflyovers(res); err != nil {
+			// 	logger.Error("Error applying reservations", "err", err)
+			// }
 
-			path, err = hbirdClient.FinalizePath(path, pingPayloadLen, time.Now())
+			path, err = hbirdClient.DeriveDataPlanePath(path, pingPayloadLen, time.Now())
 			if err != nil {
 				logger.Error("Error assembling hummingbird path", "err", err)
 			}

@@ -53,9 +53,6 @@ type Flyover struct {
 	StartTime uint32
 	// Duration is the duration of the reservation in seconds
 	Duration uint16
-	// EndTime is the unix timestamp at which the reservation ends.
-	// Is not strictly necessary but included for simplicity
-	EndTime uint32
 }
 
 // Temporary cheating function until the system to request keys is available
