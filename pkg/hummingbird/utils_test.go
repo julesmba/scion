@@ -15,6 +15,7 @@
 package hummingbird_test
 
 import (
+	"testing"
 	"time"
 
 	"github.com/scionproto/scion/pkg/slayers/path"
@@ -22,6 +23,7 @@ import (
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
 	"github.com/scionproto/scion/pkg/snet"
 	snetpath "github.com/scionproto/scion/pkg/snet/path"
+	"github.com/stretchr/testify/assert"
 )
 
 var fixedTime = time.Unix(1136239445, 432)
@@ -188,8 +190,10 @@ func getRawScionPath(d scion.Decoded) ([]byte, error) {
 	return b, err
 }
 
-func getScionSnetPath() (snetpath.Path, error) {
+func getScionSnetPath(t *testing.T) snetpath.Path {
+	t.Helper()
 	rawScion, err := getRawScionPath(*decodedTestPath)
+	assert.NoError(t, err)
 	p := snetpath.Path{
 		Src: interfacesTest[0].IA,
 		Dst: interfacesTest[len(interfacesTest)-1].IA,
@@ -200,7 +204,7 @@ func getScionSnetPath() (snetpath.Path, error) {
 			Interfaces: interfacesTest,
 		},
 	}
-	return p, err
+	return p
 }
 
 func getRawHbirdPath(h hummingbird.Decoded) ([]byte, error) {

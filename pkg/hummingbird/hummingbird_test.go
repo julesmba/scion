@@ -76,8 +76,7 @@ var testFlyovers = []hummingbird.Flyover{
 }
 
 func TestConvertToHbirdPath(t *testing.T) {
-	scionPath, err := getScionSnetPath()
-	assert.NoError(t, err)
+	scionPath:= getScionSnetPath(t)
 
 	now := time.Now()
 	expectecPath, err := getHbirdNoFlyoversSnetPath(now)
