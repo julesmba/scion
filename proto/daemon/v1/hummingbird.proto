@@ -68,12 +68,15 @@ message Flyover {
     // This Ak is the derived key for this flyover, that is used to derive the per-host key.
     // It is 16 bytes long.
     bytes ak = 8;
-
 }
 
 message Reservation {
     // The raw Hummingbird path.
     bytes raw = 1;
+    // The hop-sequence of flyovers. There are no crossovers in this sequence,
+    // i.e. for each xover in the hummingbird path, only one hop is present.
+    // Hops in the path without corresponding flyover have a nil entry.
+    repeated Flyover flyovers = 2;
     // Ratio # flyovers / # hops.
-    double ratio = 2;
+    double ratio = 3;
 }
