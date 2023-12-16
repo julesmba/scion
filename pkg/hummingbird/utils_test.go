@@ -43,7 +43,7 @@ var testInfoFields = []path.InfoField{
 	},
 }
 
-var testHopFields = []path.HopField{
+var testScionHopFields = []path.HopField{
 	{
 		ExpTime:     63,
 		ConsIngress: 1,
@@ -72,26 +72,26 @@ var testHopFields = []path.HopField{
 
 var testFlyoverFields = []hummingbird.FlyoverHopField{
 	{
-		HopField: testHopFields[0],
+		HopField: testScionHopFields[0],
 		Flyover:  false,
 	},
 	{
-		HopField: testHopFields[1],
+		HopField: testScionHopFields[1],
 		Flyover:  false,
 	},
 	{
-		HopField: testHopFields[2],
+		HopField: testScionHopFields[2],
 		Flyover:  false,
 	},
 	{
-		HopField: testHopFields[3],
+		HopField: testScionHopFields[3],
 		Flyover:  false,
 	},
 }
 
 var testFlyoverFieldsReserved = []hummingbird.FlyoverHopField{
 	{
-		HopField:     testHopFields[0],
+		HopField:     testScionHopFields[0],
 		Flyover:      true,
 		ResID:        1234,
 		Bw:           16,
@@ -99,7 +99,7 @@ var testFlyoverFieldsReserved = []hummingbird.FlyoverHopField{
 		ResStartTime: 10,
 	},
 	{
-		HopField:     testHopFields[1],
+		HopField:     testScionHopFields[1],
 		Flyover:      true,
 		ResID:        42,
 		Bw:           16,
@@ -107,11 +107,11 @@ var testFlyoverFieldsReserved = []hummingbird.FlyoverHopField{
 		ResStartTime: 32,
 	},
 	{
-		HopField: testHopFields[2],
+		HopField: testScionHopFields[2],
 		Flyover:  false,
 	},
 	{
-		HopField:     testHopFields[3],
+		HopField:     testScionHopFields[3],
 		Flyover:      true,
 		ResID:        365,
 		Bw:           20,
@@ -120,7 +120,7 @@ var testFlyoverFieldsReserved = []hummingbird.FlyoverHopField{
 	},
 }
 
-var decodedTestPath = &scion.Decoded{
+var decodedScionTestPath = &scion.Decoded{
 	Base: scion.Base{
 		PathMeta: scion.MetaHdr{
 			CurrINF: 0,
@@ -132,7 +132,7 @@ var decodedTestPath = &scion.Decoded{
 		NumHops: 4,
 	},
 	InfoFields: testInfoFields,
-	HopFields:  testHopFields,
+	HopFields:  testScionHopFields,
 }
 
 var interfacesTest = []snet.PathInterface{
@@ -192,7 +192,7 @@ func getRawScionPath(d scion.Decoded) ([]byte, error) {
 
 func getScionSnetPath(t *testing.T) snetpath.Path {
 	t.Helper()
-	rawScion, err := getRawScionPath(*decodedTestPath)
+	rawScion, err := getRawScionPath(*decodedScionTestPath)
 	assert.NoError(t, err)
 	p := snetpath.Path{
 		Src: interfacesTest[0].IA,
@@ -234,10 +234,17 @@ func getHbirdNoFlyoversSnetPath(t time.Time) (snetpath.Path, error) {
 	return p, err
 }
 
-func getHbirdFlyoversSnetPath(t time.Time) (snetpath.Path, error) {
-	decoded := *decodedHbirdTestPathFlyovers
-	secs := uint32(t.Unix())
-	millis := uint32(t.Nanosecond()/1000) << 22
+func getHbirdFlyoversSnetPath(t *testing.T, now time.Time) (snetpath.Path, error) {
+	// Fully clone from the global variable, to avoid mutating it.
+	serialized := make([]byte, decodedHbirdTestPathFlyovers.Len())
+	err := decodedHbirdTestPathFlyovers.SerializeTo(serialized)
+	assert.NoError(t, err)
+	decoded := hummingbird.Decoded{}
+	err = decoded.DecodeFromBytes(serialized)
+	assert.NoError(t, err)
+
+	secs := uint32(now.Unix())
+	millis := uint32(now.Nanosecond()/1000) << 22
 	decoded.Base.PathMeta.BaseTS = secs
 	decoded.Base.PathMeta.HighResTS = millis
 

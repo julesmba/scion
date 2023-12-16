@@ -23,24 +23,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPrepareHbirdPath(t *testing.T) {
+func TestReservationWithScionPath(t *testing.T) {
 	scionPath := getScionSnetPath(t)
 
-	c, err := hummingbird.NewReservation(
-		hummingbird.WithPath(scionPath),
-		hummingbird.WithFlyovers(flyoverSliceToMap(testFlyovers)),
+	r, err := hummingbird.NewReservation(
 		hummingbird.WithNow(fixedTime),
+		hummingbird.WithScionPath(scionPath, flyoverSliceToMap(testFlyoversInDB)),
 	)
 	require.NoError(t, err)
-
-	scionPath = getScionSnetPath(t)
+	hbirdPath, err := getHbirdFlyoversSnetPath(t, fixedTime)
 	assert.NoError(t, err)
-
-	hbirdPath, err := getHbirdFlyoversSnetPath(fixedTime)
-	assert.NoError(t, err)
-
-	// output, err := c.DeriveDataPlanePath(scionPath, 16, fixedTime)
-	decoded := c.DeriveDataPlanePath(16, fixedTime)
+	decoded := r.DeriveDataPlanePath(16, fixedTime)
 	raw := path.Hummingbird{
 		Raw: make([]byte, decoded.Len()),
 	}
@@ -50,6 +43,29 @@ func TestPrepareHbirdPath(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, hbirdPath, scionPath)
+}
+
+func TestReservationWithHbirdPath(t *testing.T) {
+	// Build a Reservation from an existing decoded hummingbird path and its associated
+	// flyover sequence.
+	r, err := hummingbird.NewReservation(
+		hummingbird.WithNow(fixedTime),
+		hummingbird.WithExistingHbirdPath(
+			decodedHbirdTestPathFlyovers,
+			// selectUsedFlyovers(t, testFlyoverFieldsReserved, testExpectedFlyovers)),
+			testExpectedFlyovers),
+	)
+	assert.NoError(t, err)
+
+	// Expected:
+	expected, err := hummingbird.NewReservation(
+		hummingbird.WithNow(fixedTime),
+		hummingbird.WithScionPath(getScionSnetPath(t),
+			flyoverSliceToMap(testFlyoversInDB),
+		),
+	)
+	require.NoError(t, err)
+	require.Equal(t, expected, r)
 }
 
 func flyoverSliceToMap(flyovers []hummingbird.Flyover) hummingbird.FlyoverSet {

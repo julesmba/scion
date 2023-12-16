@@ -48,40 +48,46 @@ func (r ReservationJuanDeleteme) LessThan(other *ReservationJuanDeleteme) bool {
 // Reservation represents a possibly partially reserved path, with zero or more flyovers.
 // TODO(juagargi) refactor functionality in two types: Reservation and move the rest to sciond.
 type Reservation struct {
-	dec     hummingbird.Decoded // caches a decoded path for multiple uses
-	hops    []Hop               // possible flyovers
-	counter uint32              // duplicate detection counter
+	dec  *hummingbird.Decoded // caches a decoded path for multiple uses
+	hops []Hop                // possible flyovers, one per dec.HopField that has a flyover.
+	now  time.Time            // the current time
 
-	now        time.Time // the current time
-	interfaces []snet.PathInterface
-	flyoverSet FlyoverSet // the flyovers used to creatre this reservation
+	counter uint32 // duplicate detection counter
 }
 
 type Hop struct {
-	hopfield *hummingbird.FlyoverHopField // dataplane hop field
-	flyover  *Flyover                     // flyover used to build this hop
+	Hopfield *hummingbird.FlyoverHopField // dataplane hop field
+	Flyover  *Flyover                     // flyover used to build this hop
 }
 
+// NewReservation creates a new reservation object. The option setting functions are executed in
+// the order they appear in the slice.
 func NewReservation(opts ...reservationModFcn) (*Reservation, error) {
-	c := &Reservation{
+	r := &Reservation{
 		now: time.Now(),
 	}
 	// Run all options on this object.
 	for _, fcn := range opts {
-		if err := fcn(c); err != nil {
+		if err := fcn(r); err != nil {
 			return nil, err
 		}
 	}
 
-	// Create reservation.
-	c.prepareHbirdPath()
-
-	return c, nil
+	return r, nil
 }
 
+// reservationModFcn is a options setting function for a reservation.
 type reservationModFcn func(*Reservation) error
 
-func WithPath(p snet.Path) reservationModFcn {
+// FlyoverSet is a map between a flyover IA,ingress,egress and its corresponding collection of
+// flyover objects (each of them can have e.g. different starting times).
+type FlyoverSet map[BaseHop][]*Flyover
+
+// WithScionPath allows to build a Reservation based on the SCION path and flyovers passed as
+// arguments.
+// The flyovers are chosen from the map in order of appearance iff they are suitable, i.e. if
+// they have a validity period intersecting with now.
+func WithScionPath(p snet.Path, flyovers FlyoverSet) reservationModFcn {
 	return func(r *Reservation) error {
 		switch p := p.Dataplane().(type) {
 		case path.SCION:
@@ -89,28 +95,72 @@ func WithPath(p snet.Path) reservationModFcn {
 			if err := scion.DecodeFromBytes(p.Raw); err != nil {
 				return serrors.Join(err, serrors.New("Failed to Prepare Hummingbird Path"))
 			}
-			r.dec = hummingbird.Decoded{}
+			r.dec = &hummingbird.Decoded{}
 			r.dec.ConvertFromScionDecoded(scion)
 		default:
 			return serrors.New("Unsupported path type")
 		}
 		// We use the path metadata to get the IA from it. This sequence of interfaces does not
 		// include the egress-to-ingress crossed over interfaces in the core AS.
-		r.interfaces = p.Metadata().Interfaces
+		interfaces := p.Metadata().Interfaces
+
+		r.dec.PathMeta.SegLen[0] += 2
+		r.newHopSelectFlyover(
+			interfaces[0].IA,
+			0,
+			uint16(interfaces[0].ID),
+			&r.dec.HopFields[0],
+			flyovers,
+		)
+
+		// The dataplane path in c.dec contains inf fields and cross-over hops.
+		// Do each segment at a time to ignore the first hop of every segment except the first.
+		hopIdx := 1 // the index of the current hop in the dataplane.
+		for infIdx := 0; infIdx < r.dec.NumINF; infIdx, hopIdx = infIdx+1, hopIdx+1 {
+			// Preserve the hopcount locally, as we modify it inside the loop itself.
+			hopCount := int(r.dec.Base.PathMeta.SegLen[infIdx]) / hummingbird.HopLines
+			for i := 1; i < hopCount; i, hopIdx = i+1, hopIdx+1 {
+				r.dec.PathMeta.SegLen[infIdx] += 2
+				r.newHopSelectFlyover(
+					interfaces[len(r.hops)*2-1].IA,
+					uint16(interfaces[len(r.hops)*2-1].ID),
+					egressID(interfaces, len(r.hops)),
+					&r.dec.HopFields[hopIdx],
+					flyovers,
+				)
+			}
+		}
 
 		return nil
 	}
 }
 
-type FlyoverSet map[BaseHop][]*Flyover
-
-func WithFlyovers(flyovers FlyoverSet) reservationModFcn {
+// WithExistingHbirdPath allows to create a Reservation from an existing Hummingbird decoded
+// path and its corresponding hop sequence.
+func WithExistingHbirdPath(p *hummingbird.Decoded, flyovers []*Flyover) reservationModFcn {
+	// func WithExistingHbirdPath(p *hummingbird.Decoded, hops []Hop) reservationModFcn {
 	return func(r *Reservation) error {
-		r.flyoverSet = flyovers
+		r.dec = p
+		// Create as many hops as non nil flyovers.
+		for i, flyover := range flyovers {
+			if flyover == nil {
+				continue
+			}
+			r.newHop(flyover.IA, flyover.Ingress, flyover.Egress,
+				&r.dec.HopFields[i], flyover)
+		}
+		// For each hop field, clean up the ResStartTime as it's set when deriving the dataplane
+		// path.
+		for i := range r.dec.HopFields {
+			r.dec.HopFields[i].ResStartTime = 0
+		}
+
 		return nil
 	}
 }
 
+// WithNow modifies the current point in time for this reservation. It is useful to filter
+// the different flyovers that can be passed to WithScionPath.
 func WithNow(now time.Time) reservationModFcn {
 	return func(r *Reservation) error {
 		r.now = now
@@ -118,38 +168,25 @@ func WithNow(now time.Time) reservationModFcn {
 	}
 }
 
-// prepareHbirdPath uses the decoded hummingbird path to walk each hop of each segment,
-// and tries to find a suitable flyover and assign it to each hop.
-// Crossover (xover) hops are treated by setting the flyover on the first hop.
-func (r *Reservation) prepareHbirdPath() {
-	r.dec.PathMeta.SegLen[0] += 2
-	r.newHop(
-		r.interfaces[0].IA,
-		0,
-		uint16(r.interfaces[0].ID),
-		&r.dec.HopFields[0],
-	)
-
-	// The dataplane path in c.dec contains inf fields and cross-over hops.
-	// Do each segment at a time to ignore the first hop of every segment except the first.
-	hopIdx := 1 // the index of the current hop in the dataplane.
-	for infIdx := 0; infIdx < r.dec.NumINF; infIdx, hopIdx = infIdx+1, hopIdx+1 {
-		// Preserve the hopcount locally, as we modify it inside the loop itself.
-		hopCount := int(r.dec.Base.PathMeta.SegLen[infIdx]) / hummingbird.HopLines
-		for i := 1; i < hopCount; i, hopIdx = i+1, hopIdx+1 {
-			r.dec.PathMeta.SegLen[infIdx] += 2
-			r.newHop(
-				r.interfaces[len(r.hops)*2-1].IA,
-				uint16(r.interfaces[len(r.hops)*2-1].ID),
-				egressID(r.interfaces, len(r.hops)),
-				&r.dec.HopFields[hopIdx],
-			)
-		}
-	}
+func (r *Reservation) Destination() addr.IA {
+	return r.hops[len(r.hops)-1].Flyover.IA
 }
 
-func (r *Reservation) Destination() addr.IA {
-	return r.hops[len(r.hops)-1].flyover.IA
+// FlyoverPerHopField returns a slice of pointers to flyovers, one per hop field present in the path,
+// i.e. the length of the slice is the hop field count.
+// If a hop field is not covered by a flyover, nil is used in its place.
+func (r *Reservation) FlyoverPerHopField() []*Flyover {
+	flyovers := make([]*Flyover, len(r.dec.HopFields))
+	for hopIdx, i := 0, 0; i < len(flyovers); i++ {
+		var flyover *Flyover
+		if r.hops[hopIdx].Hopfield == &r.dec.HopFields[i] {
+			flyover = r.hops[hopIdx].Flyover
+			hopIdx++
+		}
+		flyovers[i] = flyover
+	}
+
+	return flyovers
 }
 
 // DeriveDataPlanePath sets pathmeta timestamps and increments duplicate detection counter and
@@ -175,23 +212,25 @@ func (r *Reservation) DeriveDataPlanePath(
 	var byteBuffer [hummingbird.FlyoverMacBufferSize]byte
 	var xkbuffer [hummingbird.XkBufferSize]uint32
 	for _, h := range r.hops {
-		if !h.hopfield.Flyover {
+		if !h.Hopfield.Flyover {
 			continue
 		}
-		h.hopfield.ResStartTime = uint16(secs - h.flyover.StartTime)
-		flyovermac := hummingbird.FullFlyoverMac(h.flyover.Ak[:], r.Destination(), pktLen,
-			h.hopfield.ResStartTime, millis, byteBuffer[:], xkbuffer[:])
+		h.Hopfield.ResStartTime = uint16(secs - h.Flyover.StartTime)
+		flyovermac := hummingbird.FullFlyoverMac(h.Flyover.Ak[:], r.Destination(), pktLen,
+			h.Hopfield.ResStartTime, millis, byteBuffer[:], xkbuffer[:])
 
-		binary.BigEndian.PutUint32(h.hopfield.HopField.Mac[:4],
-			binary.BigEndian.Uint32(flyovermac[:4])^binary.BigEndian.Uint32(h.hopfield.HopField.Mac[:4]))
-		binary.BigEndian.PutUint16(h.hopfield.HopField.Mac[4:],
-			binary.BigEndian.Uint16(flyovermac[4:])^binary.BigEndian.Uint16(h.hopfield.HopField.Mac[4:]))
+		binary.BigEndian.PutUint32(h.Hopfield.HopField.Mac[:4],
+			binary.BigEndian.Uint32(flyovermac[:4])^binary.BigEndian.Uint32(h.Hopfield.HopField.Mac[:4]))
+		binary.BigEndian.PutUint16(h.Hopfield.HopField.Mac[4:],
+			binary.BigEndian.Uint16(flyovermac[4:])^binary.BigEndian.Uint16(h.Hopfield.HopField.Mac[4:]))
 	}
 
-	return &r.dec
+	return r.dec
 }
 
-func (r *Reservation) newHop(ia addr.IA, in, eg uint16, hf *hummingbird.FlyoverHopField) {
+func (r *Reservation) newHopSelectFlyover(ia addr.IA, in, eg uint16,
+	hf *hummingbird.FlyoverHopField, flyoverSet FlyoverSet) {
+
 	// Look for a valid flyover.
 	now := uint32(r.now.Unix())
 	k := BaseHop{
@@ -199,28 +238,26 @@ func (r *Reservation) newHop(ia addr.IA, in, eg uint16, hf *hummingbird.FlyoverH
 		Ingress: in,
 		Egress:  eg,
 	}
-	flyovers := r.flyoverSet[k]
-	var hopFlyover *Flyover
+	flyovers := flyoverSet[k]
 	for _, flyover := range flyovers {
 		if flyover.StartTime <= now && uint32(flyover.Duration) >= now-flyover.StartTime {
-			hopFlyover = flyover
-			hf.Flyover = true
 			r.dec.NumLines += 2
-			hf.Bw = flyover.Bw
-			hf.Duration = flyover.Duration
-			hf.ResID = flyover.ResID
+			r.newHop(ia, in, eg, hf, flyover)
 			break
 		}
 	}
+}
 
+func (r *Reservation) newHop(ia addr.IA, in, eg uint16,
+	hf *hummingbird.FlyoverHopField, flyover *Flyover) {
+
+	hf.Flyover = true
+	hf.Bw = flyover.Bw
+	hf.Duration = flyover.Duration
+	hf.ResID = flyover.ResID
 	r.hops = append(r.hops, Hop{
-		// BaseHop: BaseHop{
-		// 	IA:      ia,
-		// 	Ingress: in,
-		// 	Egress:  eg,
-		// },
-		hopfield: hf,
-		flyover:  hopFlyover,
+		Hopfield: hf,
+		Flyover:  flyover,
 	})
 }
 
