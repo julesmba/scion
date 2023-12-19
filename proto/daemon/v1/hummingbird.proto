@@ -40,8 +40,8 @@ message GetReservationsRequest {
     // Choose to fetch fresh paths for this request instead
     // of having the server reply from its cache.
     bool refresh = 3;
-    // The minimum bandwidth for the obtained reservations.
-    uint64 min_bandwidth = 4;
+    // The minimum bandwidth for the obtained reservations, 16 bits.
+    uint32 min_bandwidth = 4;
 }
 
 message GetReservationsResponse {
