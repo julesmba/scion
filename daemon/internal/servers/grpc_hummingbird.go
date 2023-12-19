@@ -30,7 +30,7 @@ import (
 )
 
 type HummingbirdFetcher interface {
-	ListFlyovers(ctx context.Context, owners []addr.IA) ([]*hummingbird.BaseHop, error)
+	ListFlyovers(ctx context.Context, owners []addr.IA) ([]*hummingbird.Flyover, error)
 }
 
 func (s *DaemonServer) StoreFlyovers(
@@ -59,7 +59,7 @@ func (s *DaemonServer) GetReservations(
 	}
 
 	// Obtain reservations composing flyovers for those paths.
-	rsvs, err := s.getReservations(ctx, paths)
+	rsvs, err := s.getReservations(ctx, paths, time.Now(), uint16(req.MinBandwidth))
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +68,12 @@ func (s *DaemonServer) GetReservations(
 	res := &sdpb.GetReservationsResponse{
 		Reservations: make([]*sdpb.Reservation, len(paths)),
 	}
-
-	_ = rsvs
+	for i := range res.Reservations {
+		res.Reservations[i], err = convertReservationToPB(rsvs[i])
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return res, nil
 }
@@ -106,7 +110,9 @@ func (s *DaemonServer) getScionPaths(
 func (s *DaemonServer) getReservations(
 	ctx context.Context,
 	paths []path.Path,
-) ([]*hummingbird.ReservationJuanDeleteme, error) {
+	now time.Time,
+	minBW uint16,
+) ([]*hummingbird.Reservation, error) {
 
 	// Make a set with all appearing IASet. Then a slice of them to obtain flyovers.
 	IASet := make(map[addr.IA]struct{}, 0)
@@ -128,19 +134,26 @@ func (s *DaemonServer) getReservations(
 	mFlyovers := flyoversToMap(flyovers)
 
 	// For each path, try to assign as many flyovers as possible.
-	reservations := make([]*hummingbird.ReservationJuanDeleteme, len(paths))
+	reservations := make([]*hummingbird.Reservation, len(paths))
 	for i, p := range paths {
-		flyovers, ratio := assignFlyovers(p.Meta.Interfaces, mFlyovers)
-		reservations[i] = &hummingbird.ReservationJuanDeleteme{
-			SCIONPath: p,
-			Flyovers:  flyovers,
-			Ratio:     ratio,
+		reservations[i], err = hummingbird.NewReservation(
+			hummingbird.WithNow(now),
+			hummingbird.WithMinBW(minBW),
+			hummingbird.WithScionPath(p, mFlyovers),
+		)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	// Rank the reservations by flyover / hop ratio.
 	sort.Slice(reservations, func(i, j int) bool {
-		return reservations[i].LessThan(reservations[j])
+		nFa, nHFa := reservations[i].FlyoverAndHFCount()
+		ratioa := float64(nFa) / float64(nHFa)
+		nFb, nHFb := reservations[i].FlyoverAndHFCount()
+		ratiob := float64(nFb) / float64(nHFb)
+
+		return ratioa < ratiob
 	})
 
 	return reservations, nil
@@ -230,82 +243,56 @@ func linkTypeFromPB(lt sdpb.LinkType) snet.LinkType {
 	}
 }
 
-// flyoverMapKey is a map of flyovers keyed by IA, ingress, and egress.
-// The assumption is that at most one hop field exists per triplet.
-type flyoverMapKey struct {
-	IA      addr.IA
-	Ingress uint16
-	Egress  uint16
-}
-type flyoverMap map[flyoverMapKey]*hummingbird.BaseHop
-
-func flyoversToMap(flyovers []*hummingbird.BaseHop) flyoverMap {
-	ret := make(flyoverMap)
+func flyoversToMap(flyovers []*hummingbird.Flyover) hummingbird.FlyoverMap {
+	ret := make(hummingbird.FlyoverMap)
 	for _, flyover := range flyovers {
-		k := flyoverMapKey{
+		k := hummingbird.BaseHop{
 			IA:      flyover.IA,
 			Ingress: flyover.Ingress,
 			Egress:  flyover.Egress,
 		}
-		ret[k] = flyover
+		ret[k] = append(ret[k], flyover)
 	}
 	return ret
 }
 
-// assignFlyovers assigns as flyovers to as many hops of a path as possible.
-// The first returned value is a slice of flyovers, with the same length as the hop sequence,
-// and when not nil, it points to a Flyover that can be used in the hop of that specific index.
-// As SCION hops appear twice per ingress/egress pairs (with the exception of the first and
-// last ones), the flyovers are never located on tbe egress index, which means, always located
-// on odd indices.
-// The second returned value is the ratio of flyovers (1.0 being all, 0.0 being none) that exist
-// for that path.
-func assignFlyovers(
-	hopSequence []snet.PathInterface,
-	flyovers flyoverMap,
-) ([]*hummingbird.BaseHop, float64) {
-
-	ret := make([]*hummingbird.BaseHop, len(hopSequence))
-	flyoverExistsCount := 0
-
-	// Do the first flyover apart.
-	k := flyoverMapKey{
-		IA:      hopSequence[0].IA,
-		Ingress: 0,
-		Egress:  uint16(hopSequence[0].ID),
-	}
-	ret[0] = flyovers[k]
-	if ret[0] != nil {
-		flyoverExistsCount++
+func convertReservationToPB(r *hummingbird.Reservation) (*sdpb.Reservation, error) {
+	// Prepare the hummingbird path.
+	p := r.GetHummingbirdPath()
+	raw := make([]byte, p.Len())
+	if err := p.SerializeTo(raw); err != nil {
+		return nil, err
 	}
 
-	// Do everything in the middle, except the last flyover.
-	for i := 1; i < len(hopSequence)-1; i += 2 {
-		// Prepare to look for the next flyover.
-		hop := hopSequence[i]
-		k = flyoverMapKey{
-			IA:      hop.IA,
-			Ingress: uint16(hop.ID),
-			Egress:  uint16(hopSequence[i+1].ID),
-		}
-
-		// Find out if there's any flyover we can use.
-		ret[i] = flyovers[k]
-		if ret[i] != nil {
-			flyoverExistsCount++
-		}
+	// Prepare the flyovers.
+	flyovers := r.FlyoverPerHopField()
+	numF, numHF := r.FlyoverAndHFCount()
+	ret := &sdpb.Reservation{
+		Raw:      raw,
+		Ratio:    float64(numF) / float64(numHF),
+		Flyovers: make([]*sdpb.Flyover, len(flyovers)),
+	}
+	for i, f := range flyovers {
+		ret.Flyovers[i] = convertFlyoverToPB(f)
 	}
 
-	// Do the last flyover.
-	k = flyoverMapKey{
-		IA:      hopSequence[len(hopSequence)-1].IA,
-		Ingress: uint16(hopSequence[len(hopSequence)-1].ID),
-		Egress:  0,
+	return ret, nil
+}
+
+func convertFlyoverToPB(f *hummingbird.Flyover) *sdpb.Flyover {
+	if f == nil {
+		return nil
 	}
-	ret[len(ret)-1] = flyovers[k]
-	if ret[len(ret)-1] != nil {
-		flyoverExistsCount++
+	ret := &sdpb.Flyover{
+		Ia:        uint64(f.IA),
+		Ingress:   uint32(f.Ingress),
+		Egress:    uint32(f.Egress),
+		Bw:        uint32(f.Bw),
+		ResId:     f.ResID,
+		StartTime: f.StartTime,
+		Duration:  uint32(f.Duration),
+		Ak:        append([]byte{}, f.Ak[:]...),
 	}
 
-	return ret, float64(flyoverExistsCount) / float64(len(hopSequence)/2)
+	return ret
 }

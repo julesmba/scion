@@ -43,6 +43,10 @@ func TestReservationWithScionPath(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, hbirdPath, scionPath)
+
+	// Check that the number of flyovers, nil or otherwise, is the same as hop fields.
+	flyovers := r.FlyoverPerHopField()
+	assert.Equal(t, len(decodedScionTestPath.HopFields), len(flyovers))
 }
 
 func TestReservationWithHbirdPath(t *testing.T) {
@@ -52,7 +56,6 @@ func TestReservationWithHbirdPath(t *testing.T) {
 		hummingbird.WithNow(fixedTime),
 		hummingbird.WithExistingHbirdPath(
 			decodedHbirdTestPathFlyovers,
-			// selectUsedFlyovers(t, testFlyoverFieldsReserved, testExpectedFlyovers)),
 			testExpectedFlyovers),
 	)
 	assert.NoError(t, err)
@@ -68,8 +71,8 @@ func TestReservationWithHbirdPath(t *testing.T) {
 	require.Equal(t, expected, r)
 }
 
-func flyoverSliceToMap(flyovers []hummingbird.Flyover) hummingbird.FlyoverSet {
-	m := make(hummingbird.FlyoverSet)
+func flyoverSliceToMap(flyovers []hummingbird.Flyover) hummingbird.FlyoverMap {
+	m := make(hummingbird.FlyoverMap)
 	for _, flyover := range flyovers {
 		clone := flyover
 		m[clone.BaseHop] = append(m[clone.BaseHop], &clone)

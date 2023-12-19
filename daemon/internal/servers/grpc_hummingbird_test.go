@@ -21,11 +21,16 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/hummingbird"
 	"github.com/scionproto/scion/pkg/private/common"
+	"github.com/scionproto/scion/pkg/private/util"
 	"github.com/scionproto/scion/pkg/private/xtest"
+	pathlayers "github.com/scionproto/scion/pkg/slayers/path"
+	"github.com/scionproto/scion/pkg/slayers/path/scion"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/path"
 	"github.com/stretchr/testify/require"
 )
+
+const currUnixTimestamp = 100
 
 // TestGetReservation checks that given a set of SCION paths, the functions getting the
 // reservation correctly finds the appropriate flyovers and uses them.
@@ -33,15 +38,21 @@ func TestGetReservation(t *testing.T) {
 	cases := map[string]struct {
 		// paths' hops, like { {0, "1-ff00:0:1", 1, 2, "1-ff00:0:2", 0} , ... }
 		scionPaths [][]any
-		expected   [][]any // this is a slice of flyovers with nils in it
+		expected   [][]any // this is a slice of flyovers allowing nils in it
 		flyoverDB  [][]any
 	}{
 		"onepath_oneflyover": {
 			scionPaths: [][]any{
-				{0, "1-ff00:0:1", 1, 2, "1-ff00:0:2", 0},
+				{
+					0, "1-ff00:0:1", 1,
+					2, "1-ff00:0:2", 0,
+				},
 			},
 			expected: [][]any{
-				{0, "1-ff00:0:1", 1, nil},
+				{
+					0, "1-ff00:0:1", 1,
+					nil,
+				},
 			},
 			flyoverDB: [][]any{
 				{0, "1-ff00:0:1", 1},
@@ -51,13 +62,16 @@ func TestGetReservation(t *testing.T) {
 		},
 		"onepath_twoflyovers": {
 			scionPaths: [][]any{
-				{0, "1-ff00:0:1", 1, 2, "1-ff00:0:2", 3, 4, "1-ff00:0:3", 0},
+				{
+					0, "1-ff00:0:1", 1,
+					2, "1-ff00:0:2", 3,
+					4, "1-ff00:0:3", 0,
+				},
 			},
 			expected: [][]any{
 				{
 					0, "1-ff00:0:1", 1,
 					2, "1-ff00:0:2", 3,
-					nil,
 					nil,
 				},
 			},
@@ -78,7 +92,7 @@ func TestGetReservation(t *testing.T) {
 			ctx, cancelF := context.WithDeadline(context.Background(), deadline)
 			defer cancelF()
 
-			flyoverDB := make([]*hummingbird.BaseHop, len(tc.flyoverDB))
+			flyoverDB := make([]*hummingbird.Flyover, len(tc.flyoverDB))
 			for i, flyoverDesc := range tc.flyoverDB {
 				flyover := getMockFlyovers(t, flyoverDesc...)
 				require.Len(t, flyover, 1, "bad test")
@@ -90,21 +104,31 @@ func TestGetReservation(t *testing.T) {
 			s := &DaemonServer{
 				HummingbirdFetcher: mockHbirdServer,
 			}
-			scion := getMockScionPaths(t, tc.scionPaths)
-			rsvs, err := s.getReservations(ctx, scion)
+			scionPaths := getMockScionPaths(t, tc.scionPaths)
+			rsvs, err := s.getReservations(ctx, scionPaths, util.SecsToTime(currUnixTimestamp), 0)
 			require.NoError(t, err)
 
 			// Check the size.
-			require.Len(t, rsvs, len(scion))
+			require.Len(t, rsvs, len(scionPaths))
 
 			// For each path, check the flyovers.
-			for i, p := range scion {
-				// Same hop count in both SCION path and reservation.
-				ifaces := p.Meta.Interfaces
-				require.Equal(t, len(ifaces), len(rsvs[i].Flyovers))
+			for i, pRaw := range scionPaths {
+				// Decode pRaw into a SCION decoded path.
+				require.IsType(t, path.SCION{}, pRaw.DataplanePath)
+				dpRaw := pRaw.DataplanePath.(path.SCION)
 
+				p := scion.Decoded{}
+				err := p.DecodeFromBytes(dpRaw.Raw)
+				require.NoError(t, err)
+
+				// Same hop count in both SCION path and reservation.
+				r := rsvs[i]
+				flyoverSequence := r.FlyoverPerHopField()
+				require.Equal(t, len(p.HopFields), len(flyoverSequence))
+
+				// Check the flyover sequence.
 				expected := getMockFlyovers(t, tc.expected[i]...)
-				require.Equal(t, expected, rsvs[i].Flyovers)
+				require.Equal(t, expected, flyoverSequence)
 			}
 		})
 	}
@@ -113,7 +137,7 @@ func TestGetReservation(t *testing.T) {
 func getMockScionPaths(t require.TestingT, paths [][]any) []path.Path {
 	ret := make([]path.Path, len(paths))
 	for i, p := range paths {
-		ret[i] = *getMockScionPath(t, p...)
+		ret[i] = getMockScionPath(t, p...)
 	}
 	return ret
 }
@@ -123,70 +147,109 @@ func getMockScionPaths(t require.TestingT, paths [][]any) []path.Path {
 // The parameter `hops` must be of the form (0, "1-ff00:0:1", 1, 2, "1-ff00:0:2", 0) to indicate
 // one hop between those two ASes. For more ASes, add more hops in the middle.
 // First and last interface IDs must always be 0.
-func getMockScionPath(t require.TestingT, hops ...any) *path.Path {
+func getMockScionPath(t require.TestingT, hops ...any) path.Path {
 	// Check the arguments.
 	require.Equal(t, 0, len(hops)%3, "invalid hops field")
 	require.Equal(t, 0, hops[0].(int))
 	require.Equal(t, 0, hops[len(hops)-1].(int))
-	for i := 0; i < len(hops); i += 3 {
-		require.IsType(t, 0, hops[i])
-		require.IsType(t, "", hops[i+1])
-		require.IsType(t, 0, hops[i+2])
-	}
 
 	// Parse hops argument.
-	interfaces := make([]snet.PathInterface, len(hops)/3*2) // SCION interfaces plus src and dst
+	hopFields := make([]pathlayers.HopField, len(hops)/3)
+	// interfaces has src and dst as extra. Will have to remove first and last items.
+	interfaces := make([]snet.PathInterface, len(hops)/3*2)
 	for i := 0; i < len(hops); i += 3 {
-		in := hops[i].(int)
+		require.IsType(t, 0, hops[i])    // check is int
+		require.IsType(t, "", hops[i+1]) // check is string
+		require.IsType(t, 0, hops[i+2])  // check is int
+
 		ia := xtest.MustParseIA(hops[i+1].(string))
+		in := hops[i].(int)
 		eg := hops[i+2].(int)
 
+		// Set the values for this hop.
+		hopFields[i/3].ConsIngress = uint16(in)
+		hopFields[i/3].ConsEgress = uint16(eg)
+		hopFields[i/3].ExpTime = currUnixTimestamp + 100
+		hopFields[i/3].Mac = [6]byte{1, 2, 3, 4, 5, 6}
+
+		// Set the values for the ingress and the egress interfaces for the metadata field.
 		interfaces[i/3*2].IA = ia
 		interfaces[i/3*2].ID = common.IFIDType(in)
 		interfaces[i/3*2+1].IA = ia
 		interfaces[i/3*2+1].ID = common.IFIDType(eg)
 	}
 
-	path := &path.Path{
+	// Build a SCION decoded path.
+	scionPath := scion.Decoded{
+		Base: scion.Base{
+			PathMeta: scion.MetaHdr{
+				SegLen: [3]uint8{uint8(len(hops) / 3), 0, 0},
+			},
+			NumINF:  1,
+			NumHops: len(hopFields),
+		},
+		InfoFields: []pathlayers.InfoField{
+			{
+				ConsDir:   true,
+				SegID:     1,
+				Timestamp: 10,
+			},
+		},
+		HopFields: hopFields,
+	}
+
+	// Build a SCION path based on the decoded one.
+	raw, err := scionPath.ToRaw()
+	require.NoError(t, err)
+	return path.Path{
 		Src: interfaces[0].IA,
 		Dst: interfaces[len(interfaces)-1].IA,
 		Meta: snet.PathMetadata{
 			// Remove the extra start and end hops.
 			Interfaces: interfaces[1 : len(interfaces)-1],
 		},
+		DataplanePath: path.SCION{
+			Raw: raw.Raw,
+		},
 	}
-	return path
 }
 
-func getMockFlyovers(t require.TestingT, hops ...any) []*hummingbird.BaseHop {
+// getMockFlyovers receives a []any like {0, "1-ff00:0:1", 1} and creates a flyover
+// using those values.
+func getMockFlyovers(t require.TestingT, hops ...any) []*hummingbird.Flyover {
 	// Parse hops argument.
-	flyovers := make([]*hummingbird.BaseHop, 0)
+	flyovers := make([]*hummingbird.Flyover, 0)
 	for i := 0; i < len(hops); i++ {
-		var f *hummingbird.BaseHop
+		var f *hummingbird.Flyover
 		if hops[i] != nil {
 			in := hops[i].(int)
 			ia := xtest.MustParseIA(hops[i+1].(string))
 			eg := hops[i+2].(int)
-			f = &hummingbird.BaseHop{
-				IA:      ia,
-				Ingress: uint16(in),
-				Egress:  uint16(eg),
+			f = &hummingbird.Flyover{
+				BaseHop: hummingbird.BaseHop{
+					IA:      ia,
+					Ingress: uint16(in),
+					Egress:  uint16(eg),
+				},
+				StartTime: currUnixTimestamp,
+				Duration:  100,
 			}
 			i += 2 // advance faster
 		}
+		// Append a new flyover or nil.
 		flyovers = append(flyovers, f)
 	}
 	return flyovers
 }
 
 type mockServer struct {
-	Flyovers []*hummingbird.BaseHop
+	Flyovers []*hummingbird.Flyover
 }
 
 func (m *mockServer) ListFlyovers(
 	ctx context.Context,
 	owners []addr.IA,
-) ([]*hummingbird.BaseHop, error) {
+) ([]*hummingbird.Flyover, error) {
 
 	// Create a set of the requested IAs.
 	ownerMap := make(map[addr.IA]struct{})
@@ -195,7 +258,7 @@ func (m *mockServer) ListFlyovers(
 	}
 
 	// Find any flyover with any such IA and return it.
-	ret := make([]*hummingbird.BaseHop, 0)
+	ret := make([]*hummingbird.Flyover, 0)
 	for _, f := range m.Flyovers {
 		if _, ok := ownerMap[f.IA]; ok {
 			ret = append(ret, f)

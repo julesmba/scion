@@ -26,31 +26,12 @@ import (
 	"github.com/scionproto/scion/pkg/snet/path"
 )
 
-type ReservationJuanDeleteme struct {
-	SCIONPath path.Path
-	Flyovers  []*BaseHop
-	Ratio     float64 // flyover/hops ratio
-}
-
-// HopCount returns the number of hops in this path, as understood by a hop in a regular SCION path.
-func (r ReservationJuanDeleteme) HopCount() int {
-	return len(r.SCIONPath.Meta.Interfaces)
-}
-
-func (r ReservationJuanDeleteme) FlyoverCount() int {
-	return len(r.Flyovers)
-}
-
-func (r ReservationJuanDeleteme) LessThan(other *ReservationJuanDeleteme) bool {
-	return r.Ratio < other.Ratio
-}
-
 // Reservation represents a possibly partially reserved path, with zero or more flyovers.
-// TODO(juagargi) refactor functionality in two types: Reservation and move the rest to sciond.
 type Reservation struct {
-	dec  *hummingbird.Decoded // caches a decoded path for multiple uses
-	hops []Hop                // possible flyovers, one per dec.HopField that has a flyover.
-	now  time.Time            // the current time
+	dec   *hummingbird.Decoded // caches a decoded path for multiple uses
+	hops  []Hop                // possible flyovers, one per dec.HopField that has a flyover.
+	now   time.Time            // the current time
+	minBW uint16               // the minimum required bandwidth
 
 	counter uint32 // duplicate detection counter
 }
@@ -79,15 +60,15 @@ func NewReservation(opts ...reservationModFcn) (*Reservation, error) {
 // reservationModFcn is a options setting function for a reservation.
 type reservationModFcn func(*Reservation) error
 
-// FlyoverSet is a map between a flyover IA,ingress,egress and its corresponding collection of
+// FlyoverMap is a map between a flyover IA,ingress,egress and its corresponding collection of
 // flyover objects (each of them can have e.g. different starting times).
-type FlyoverSet map[BaseHop][]*Flyover
+type FlyoverMap map[BaseHop][]*Flyover
 
 // WithScionPath allows to build a Reservation based on the SCION path and flyovers passed as
 // arguments.
 // The flyovers are chosen from the map in order of appearance iff they are suitable, i.e. if
 // they have a validity period intersecting with now.
-func WithScionPath(p snet.Path, flyovers FlyoverSet) reservationModFcn {
+func WithScionPath(p snet.Path, flyovers FlyoverMap) reservationModFcn {
 	return func(r *Reservation) error {
 		switch p := p.Dataplane().(type) {
 		case path.SCION:
@@ -168,8 +149,21 @@ func WithNow(now time.Time) reservationModFcn {
 	}
 }
 
+// WithMinBW modifies the minimum bandwidth required when filtering flyovers at the time of
+// reservation creation.
+func WithMinBW(bw uint16) reservationModFcn {
+	return func(r *Reservation) error {
+		r.minBW = bw
+		return nil
+	}
+}
+
 func (r *Reservation) Destination() addr.IA {
 	return r.hops[len(r.hops)-1].Flyover.IA
+}
+
+func (r *Reservation) GetHummingbirdPath() *hummingbird.Decoded {
+	return r.dec
 }
 
 // FlyoverPerHopField returns a slice of pointers to flyovers, one per hop field present in the path,
@@ -177,7 +171,7 @@ func (r *Reservation) Destination() addr.IA {
 // If a hop field is not covered by a flyover, nil is used in its place.
 func (r *Reservation) FlyoverPerHopField() []*Flyover {
 	flyovers := make([]*Flyover, len(r.dec.HopFields))
-	for hopIdx, i := 0, 0; i < len(flyovers); i++ {
+	for hopIdx, i := 0, 0; i < len(flyovers) && hopIdx < len(r.hops); i++ {
 		var flyover *Flyover
 		if r.hops[hopIdx].Hopfield == &r.dec.HopFields[i] {
 			flyover = r.hops[hopIdx].Flyover
@@ -187,6 +181,10 @@ func (r *Reservation) FlyoverPerHopField() []*Flyover {
 	}
 
 	return flyovers
+}
+
+func (r *Reservation) FlyoverAndHFCount() (int, int) {
+	return len(r.hops), len(r.dec.HopFields)
 }
 
 // DeriveDataPlanePath sets pathmeta timestamps and increments duplicate detection counter and
@@ -229,7 +227,7 @@ func (r *Reservation) DeriveDataPlanePath(
 }
 
 func (r *Reservation) newHopSelectFlyover(ia addr.IA, in, eg uint16,
-	hf *hummingbird.FlyoverHopField, flyoverSet FlyoverSet) {
+	hf *hummingbird.FlyoverHopField, flyoverSet FlyoverMap) {
 
 	// Look for a valid flyover.
 	now := uint32(r.now.Unix())
@@ -240,7 +238,9 @@ func (r *Reservation) newHopSelectFlyover(ia addr.IA, in, eg uint16,
 	}
 	flyovers := flyoverSet[k]
 	for _, flyover := range flyovers {
-		if flyover.StartTime <= now && uint32(flyover.Duration) >= now-flyover.StartTime {
+		if flyover.StartTime <= now && uint32(flyover.Duration) >= now-flyover.StartTime &&
+			flyover.Bw >= r.minBW {
+
 			r.dec.NumLines += 2
 			r.newHop(ia, in, eg, hf, flyover)
 			break
