@@ -17,6 +17,7 @@ package hummingbird
 import (
 	"github.com/scionproto/scion/pkg/addr"
 	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
+	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 )
 
 func ConvertFlyoverToPB(f *Flyover) *sdpb.Flyover {
@@ -88,4 +89,29 @@ func ConvertReservationToPB(r *Reservation) (*sdpb.Reservation, error) {
 		Ratio:    float64(numF) / float64(numHF),
 		Flyovers: ConvertFlyoversToPB(flyovers),
 	}, nil
+}
+
+func ConvertReservationFromPB(pb *sdpb.Reservation) (*Reservation, error) {
+	// Decode path.
+	decoded := &hummingbird.Decoded{}
+	err := decoded.DecodeFromBytes(pb.Raw)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create reservation.
+	flyovers := ConvertFlyoversFromPB(pb.Flyovers)
+	return NewReservation(WithExistingHbirdPath(decoded, flyovers))
+}
+
+func ConvertReservationsFromPB(pb []*sdpb.Reservation) ([]*Reservation, error) {
+	ret := make([]*Reservation, len(pb))
+	var err error
+	for i, r := range pb {
+		ret[i], err = ConvertReservationFromPB(r)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ret, nil
 }

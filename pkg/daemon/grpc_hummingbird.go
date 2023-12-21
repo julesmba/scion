@@ -19,27 +19,55 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/hummingbird"
-	"github.com/scionproto/scion/pkg/snet"
+	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
 )
 
 func (c grpcConn) StoreFlyovers(
 	ctx context.Context,
-	flyovers []*hummingbird.BaseHop,
+	flyovers []*hummingbird.Flyover,
 ) error {
 
-	return nil
+	client := sdpb.NewDaemonServiceClient(c.conn)
+	_, err := client.StoreFlyovers(ctx, &sdpb.StoreFlyoversRequest{
+		Flyovers: hummingbird.ConvertFlyoversToPB(flyovers),
+	})
+
+	return err
 }
 
 func (c grpcConn) ListFlyovers(ctx context.Context,
-) ([]*hummingbird.BaseHop, error) {
+) ([]*hummingbird.Flyover, error) {
 
-	return nil, nil
+	client := sdpb.NewDaemonServiceClient(c.conn)
+	res, err := client.ListFlyovers(ctx, &sdpb.ListFlyoversRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return hummingbird.ConvertFlyoversFromPB(res.Flyovers), nil
 }
 
 func (c grpcConn) GetReservations(
 	ctx context.Context,
-	src, dst addr.IA,
-) ([]snet.Path, error) {
+	src addr.IA,
+	dst addr.IA,
+	minBW uint16,
+	refresh bool,
+) ([]*hummingbird.Reservation, error) {
 
-	return nil, nil
+	client := sdpb.NewDaemonServiceClient(c.conn)
+	res, err := client.GetReservations(ctx, &sdpb.GetReservationsRequest{
+		SourceIsdAs:      uint64(src),
+		DestinationIsdAs: uint64(dst),
+		MinBandwidth:     uint32(minBW),
+		Refresh:          refresh,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Return those reservations.
+	if res == nil {
+		return nil, nil
+	}
+	return hummingbird.ConvertReservationsFromPB(res.Reservations)
 }

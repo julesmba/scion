@@ -23,6 +23,7 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon/internal/metrics"
 	"github.com/scionproto/scion/pkg/drkey"
+	"github.com/scionproto/scion/pkg/hummingbird"
 	libmetrics "github.com/scionproto/scion/pkg/metrics"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/ctrl/path_mgmt"
@@ -87,7 +88,12 @@ type Connector interface {
 	DRKeyGetHostASKey(ctx context.Context, meta drkey.HostASMeta) (drkey.HostASKey, error)
 	// DRKeyGetHostHostKey requests a Host-Host Key from the daemon.
 	DRKeyGetHostHostKey(ctx context.Context, meta drkey.HostHostMeta) (drkey.HostHostKey, error)
-	GetReservations(ctx context.Context, src, dst addr.IA) ([]snet.Path, error)
+
+	StoreFlyovers(ctx context.Context, flyovers []*hummingbird.Flyover) error
+	ListFlyovers(ctx context.Context) ([]*hummingbird.Flyover, error)
+	GetReservations(ctx context.Context, src, dst addr.IA, minBW uint16, refresh bool,
+	) ([]*hummingbird.Reservation, error)
+
 	// Close shuts down the connection to the daemon.
 	Close() error
 }
