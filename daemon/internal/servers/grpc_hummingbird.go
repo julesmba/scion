@@ -29,10 +29,6 @@ import (
 	"github.com/scionproto/scion/pkg/snet/path"
 )
 
-type HummingbirdFetcher interface {
-	ListFlyovers(ctx context.Context, owners []addr.IA) ([]*hummingbird.Flyover, error)
-}
-
 func (s *DaemonServer) StoreFlyovers(
 	ctx context.Context,
 	req *sdpb.StoreFlyoversRequest,
@@ -127,7 +123,7 @@ func (s *DaemonServer) getReservations(
 	}
 
 	// Get flyovers on any AS present in the paths.
-	flyovers, err := s.HummingbirdFetcher.ListFlyovers(ctx, IAs)
+	flyovers, err := s.FlyoverDB.GetFlyovers(ctx, IAs)
 	if err != nil {
 		return nil, err
 	}

@@ -28,9 +28,11 @@ type DB interface {
 }
 
 type Read interface {
-	ListFlyovers(ctx context.Context, owners []addr.IA) ([]*hummingbird.Flyover, error)
+	GetFlyovers(ctx context.Context, IAs []addr.IA) ([]*hummingbird.Flyover, error)
 }
 type Write interface {
+	StoreFlyovers(ctx context.Context, flyovers []*hummingbird.Flyover) error
+	DeleteExpiredFlyovers(ctx context.Context) (int, error)
 }
 
 type ReadWrite interface {

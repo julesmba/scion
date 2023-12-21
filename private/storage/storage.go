@@ -26,6 +26,7 @@ import (
 	"github.com/scionproto/scion/pkg/drkey"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/private/config"
+	"github.com/scionproto/scion/private/hummingbirddb"
 	"github.com/scionproto/scion/private/pathdb"
 	"github.com/scionproto/scion/private/periodic"
 	"github.com/scionproto/scion/private/revcache"
@@ -37,9 +38,11 @@ import (
 	sqlitelevel1 "github.com/scionproto/scion/private/storage/drkey/level1/sqlite"
 	sqlitelevel2 "github.com/scionproto/scion/private/storage/drkey/level2/sqlite"
 	sqlitesecret "github.com/scionproto/scion/private/storage/drkey/secret/sqlite"
+	sqlitehbirddb "github.com/scionproto/scion/private/storage/hummingbird/sqlite"
 	sqlitepathdb "github.com/scionproto/scion/private/storage/path/sqlite"
 	truststorage "github.com/scionproto/scion/private/storage/trust"
 	sqlitetrustdb "github.com/scionproto/scion/private/storage/trust/sqlite"
+
 	"github.com/scionproto/scion/private/trust"
 )
 
@@ -103,6 +106,11 @@ type BeaconDB interface {
 type PathDB interface {
 	io.Closer
 	pathdb.DB
+}
+
+type HbirdDB interface {
+	io.Closer
+	hummingbirddb.DB
 }
 
 var _ (config.Config) = (*DBConfig)(nil)
@@ -232,6 +240,45 @@ type pathDBWithCleaner struct {
 }
 
 func (b pathDBWithCleaner) Close() error {
+	b.cleaner.Kill()
+	return b.dbCloser.Close()
+}
+
+func NewHummingbirdStorage(c DBConfig) (HbirdDB, error) {
+	log.Info("Connecting HummingbirdDB", "backend", BackendSqlite, "connection", c.Connection)
+	db, err := sqlitehbirddb.New(c.Connection)
+	if err != nil {
+		return nil, err
+	}
+	SetConnLimits(db, c)
+
+	// Start a periodic task that cleans up the expired path segments.
+	cleaner := periodic.Start(
+		cleaner.New(
+			func(ctx context.Context) (int, error) {
+				return db.DeleteExpiredFlyovers(ctx)
+			},
+			"control_pathstorage_cleaner",
+		),
+		30*time.Second,
+		30*time.Second,
+	)
+	return hbirdDBWithCleaner{
+		DB:       db,
+		cleaner:  cleaner,
+		dbCloser: db,
+	}, nil
+}
+
+// pathDBWithCleaner implements the path DB interface and stops both the
+// database and the cleanup task on Close.
+type hbirdDBWithCleaner struct {
+	hummingbirddb.DB
+	cleaner  *periodic.Runner
+	dbCloser io.Closer
+}
+
+func (b hbirdDBWithCleaner) Close() error {
 	b.cleaner.Kill()
 	return b.dbCloser.Close()
 }

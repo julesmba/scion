@@ -26,6 +26,7 @@ go_library(
         "//pkg/proto/daemon:go_default_library",
         "//pkg/snet:go_default_library",
         "//pkg/snet/path:go_default_library",
+        "//private/hummingbirddb:go_default_library",
         "//private/revcache:go_default_library",
         "//private/topology:go_default_library",
         "//private/trust:go_default_library",
@@ -50,6 +51,7 @@ go_test(
         "//pkg/slayers/path/scion:go_default_library",
         "//pkg/snet:go_default_library",
         "//pkg/snet/path:go_default_library",
+        "//private/hummingbirddb:go_default_library",
         "@com_github_stretchr_testify//require:go_default_library",
     ],
 )

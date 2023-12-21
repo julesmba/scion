@@ -16,6 +16,7 @@ package servers
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -27,6 +28,7 @@ import (
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/pkg/snet/path"
+	"github.com/scionproto/scion/private/hummingbirddb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,7 +104,7 @@ func TestGetReservation(t *testing.T) {
 				Flyovers: flyoverDB,
 			}
 			s := &DaemonServer{
-				HummingbirdFetcher: mockHbirdServer,
+				FlyoverDB: mockHbirdServer,
 			}
 			scionPaths := getMockScionPaths(t, tc.scionPaths)
 			rsvs, err := s.getReservations(ctx, scionPaths, util.SecsToTime(currUnixTimestamp), 0)
@@ -246,7 +248,12 @@ type mockServer struct {
 	Flyovers []*hummingbird.Flyover
 }
 
-func (m *mockServer) ListFlyovers(
+func (m *mockServer) BeginTransaction(ctx context.Context, opts *sql.TxOptions,
+) (hummingbirddb.Transaction, error) {
+	panic("not implemented")
+}
+
+func (m *mockServer) GetFlyovers(
 	ctx context.Context,
 	owners []addr.IA,
 ) ([]*hummingbird.Flyover, error) {
@@ -265,4 +272,12 @@ func (m *mockServer) ListFlyovers(
 		}
 	}
 	return ret, nil
+}
+
+func (m *mockServer) StoreFlyovers(ctx context.Context, flyovers []*hummingbird.Flyover) error {
+	panic("not implemented")
+}
+
+func (m *mockServer) DeleteExpiredFlyovers(ctx context.Context) (int, error) {
+	panic("not implemented")
 }
