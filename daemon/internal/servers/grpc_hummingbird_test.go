@@ -24,6 +24,7 @@ import (
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/util"
 	"github.com/scionproto/scion/pkg/private/xtest"
+	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
 	pathlayers "github.com/scionproto/scion/pkg/slayers/path"
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
 	"github.com/scionproto/scion/pkg/snet"
@@ -134,6 +135,113 @@ func TestGetReservation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStoreFlyovers(t *testing.T) {
+	deadline, _ := t.Deadline()
+	ctx, cancelF := context.WithDeadline(context.Background(), deadline)
+	defer cancelF()
+
+	mockHbirdServer := &mockServer{
+		Flyovers: nil, // empty
+	}
+	s := &DaemonServer{
+		FlyoverDB: mockHbirdServer,
+	}
+
+	expected := []*hummingbird.Flyover{
+		{
+			BaseHop: hummingbird.BaseHop{
+				IA:      xtest.MustParseIA("1-ff00:0:333"),
+				Ingress: 3,
+				Egress:  2,
+			},
+			ResID:     40,
+			Bw:        3,
+			StartTime: 10,
+			Duration:  60,
+			Ak:        [16]byte{3, 4, 5, 6},
+		},
+		{ // same as previous one, not unique (IA,resID)
+			BaseHop: hummingbird.BaseHop{
+				IA:      xtest.MustParseIA("1-ff00:0:333"),
+				Ingress: 3,
+				Egress:  2,
+			},
+			ResID:     40,
+			Bw:        3,
+			StartTime: 10,
+			Duration:  60,
+			Ak:        [16]byte{3, 4, 5, 6},
+		},
+		{
+			BaseHop: hummingbird.BaseHop{
+				IA:      xtest.MustParseIA("1-ff00:0:111"),
+				Ingress: 1,
+				Egress:  2,
+			},
+			ResID:     40,
+			Bw:        3,
+			StartTime: 10,
+			Duration:  60,
+			Ak:        [16]byte{3, 4, 5, 6},
+		},
+	}
+	req := &sdpb.StoreFlyoversRequest{
+		Flyovers: convertFlyoversToPB(expected),
+	}
+	_, err := s.StoreFlyovers(ctx, req)
+	require.NoError(t, err)
+
+	// Check DB.
+	require.EqualValues(t, expected, mockHbirdServer.Flyovers)
+}
+
+func TestListFlyovers(t *testing.T) {
+	deadline, _ := t.Deadline()
+	ctx, cancelF := context.WithDeadline(context.Background(), deadline)
+	defer cancelF()
+
+	expected := []*hummingbird.Flyover{
+		{
+			BaseHop: hummingbird.BaseHop{
+				IA:      xtest.MustParseIA("1-ff00:0:333"),
+				Ingress: 3,
+				Egress:  2,
+			},
+			ResID:     40,
+			Bw:        3,
+			StartTime: 10,
+			Duration:  60,
+			Ak:        [16]byte{3, 4, 5, 6},
+		},
+		{
+			BaseHop: hummingbird.BaseHop{
+				IA:      xtest.MustParseIA("1-ff00:0:111"),
+				Ingress: 1,
+				Egress:  2,
+			},
+			ResID:     40,
+			Bw:        3,
+			StartTime: 10,
+			Duration:  60,
+			Ak:        [16]byte{3, 4, 5, 6},
+		},
+	}
+
+	mockHbirdServer := &mockServer{
+		Flyovers: expected,
+	}
+	s := &DaemonServer{
+		FlyoverDB: mockHbirdServer,
+	}
+
+	req := &sdpb.ListFlyoversRequest{}
+	res, err := s.ListFlyovers(ctx, req)
+	require.NoError(t, err)
+
+	// Check response.
+	require.EqualValues(t, expected, convertFlyoversFromPB(res.Flyovers))
 }
 
 func getMockScionPaths(t require.TestingT, paths [][]any) []path.Path {
@@ -258,6 +366,10 @@ func (m *mockServer) GetFlyovers(
 	owners []addr.IA,
 ) ([]*hummingbird.Flyover, error) {
 
+	if len(owners) == 0 {
+		return m.Flyovers, nil
+	}
+
 	// Create a set of the requested IAs.
 	ownerMap := make(map[addr.IA]struct{})
 	for _, o := range owners {
@@ -275,7 +387,8 @@ func (m *mockServer) GetFlyovers(
 }
 
 func (m *mockServer) StoreFlyovers(ctx context.Context, flyovers []*hummingbird.Flyover) error {
-	panic("not implemented")
+	m.Flyovers = append(m.Flyovers, flyovers...)
+	return nil
 }
 
 func (m *mockServer) DeleteExpiredFlyovers(ctx context.Context) (int, error) {

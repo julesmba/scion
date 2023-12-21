@@ -33,13 +33,29 @@ func (s *DaemonServer) StoreFlyovers(
 	ctx context.Context,
 	req *sdpb.StoreFlyoversRequest,
 ) (*sdpb.StoreFlyoversResponse, error) {
-	return nil, nil
+
+	// Translate flyovers from protobuf and store them.
+	err := s.FlyoverDB.StoreFlyovers(ctx, convertFlyoversFromPB(req.Flyovers))
+	if err != nil {
+		return nil, err
+	}
+
+	return &sdpb.StoreFlyoversResponse{}, nil
 }
 func (s *DaemonServer) ListFlyovers(
 	ctx context.Context,
 	req *sdpb.ListFlyoversRequest,
 ) (*sdpb.ListFlyoversResponse, error) {
-	return nil, nil
+
+	// Get all flyovers.
+	flyovers, err := s.FlyoverDB.GetFlyovers(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &sdpb.ListFlyoversResponse{
+		Flyovers: convertFlyoversToPB(flyovers),
+	}, nil
 }
 
 func (s *DaemonServer) GetReservations(
@@ -263,16 +279,12 @@ func convertReservationToPB(r *hummingbird.Reservation) (*sdpb.Reservation, erro
 	// Prepare the flyovers.
 	flyovers := r.FlyoverPerHopField()
 	numF, numHF := r.FlyoverAndHFCount()
-	ret := &sdpb.Reservation{
+
+	return &sdpb.Reservation{
 		Raw:      raw,
 		Ratio:    float64(numF) / float64(numHF),
-		Flyovers: make([]*sdpb.Flyover, len(flyovers)),
-	}
-	for i, f := range flyovers {
-		ret.Flyovers[i] = convertFlyoverToPB(f)
-	}
-
-	return ret, nil
+		Flyovers: convertFlyoversToPB(flyovers),
+	}, nil
 }
 
 func convertFlyoverToPB(f *hummingbird.Flyover) *sdpb.Flyover {
@@ -290,5 +302,38 @@ func convertFlyoverToPB(f *hummingbird.Flyover) *sdpb.Flyover {
 		Ak:        append([]byte{}, f.Ak[:]...),
 	}
 
+	return ret
+}
+func convertFlyoversToPB(flyovers []*hummingbird.Flyover) []*sdpb.Flyover {
+	ret := make([]*sdpb.Flyover, len(flyovers))
+	for i, f := range flyovers {
+		ret[i] = convertFlyoverToPB(f)
+	}
+	return ret
+}
+
+func convertFlyoverFromPB(f *sdpb.Flyover) *hummingbird.Flyover {
+	if f == nil {
+		return nil
+	}
+	ret := &hummingbird.Flyover{
+		BaseHop: hummingbird.BaseHop{
+			IA:      addr.IA(f.Ia),
+			Ingress: uint16(f.Ingress),
+			Egress:  uint16(f.Egress),
+		},
+		Bw:        uint16(f.Bw),
+		ResID:     f.ResId,
+		StartTime: f.StartTime,
+		Duration:  uint16(f.Duration),
+	}
+	copy(ret.Ak[:], f.Ak)
+	return ret
+}
+func convertFlyoversFromPB(flyovers []*sdpb.Flyover) []*hummingbird.Flyover {
+	ret := make([]*hummingbird.Flyover, len(flyovers))
+	for i, f := range flyovers {
+		ret[i] = convertFlyoverFromPB(f)
+	}
 	return ret
 }
