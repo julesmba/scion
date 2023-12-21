@@ -59,6 +59,7 @@ const (
 	DefaultDRKeyLevel1DBPath = "/share/cache/%s.drkey_level1.db"
 	DefaultDRKeyLevel2DBPath = "/share/cache/%s.drkey_level2.db"
 	DefaultDRKeySVDBPath     = "/share/cache/%s.drkey_secret_value.db"
+	DefaultHbirdDBPath       = "/share/cache/%s.hbird.db"
 )
 
 // Default samples for various databases.
@@ -80,6 +81,9 @@ var (
 	}
 	SampleDRKeySecretValueDB = DBConfig{
 		Connection: DefaultDRKeySVDBPath,
+	}
+	SampleHbirdPathDB = DBConfig{
+		Connection: DefaultHbirdDBPath,
 	}
 )
 
@@ -111,6 +115,7 @@ type PathDB interface {
 type HbirdDB interface {
 	io.Closer
 	hummingbirddb.DB
+	GetCleaner() *periodic.Runner
 }
 
 var _ (config.Config) = (*DBConfig)(nil)
@@ -258,7 +263,7 @@ func NewHummingbirdStorage(c DBConfig) (HbirdDB, error) {
 			func(ctx context.Context) (int, error) {
 				return db.DeleteExpiredFlyovers(ctx)
 			},
-			"control_pathstorage_cleaner",
+			"hbirdstorage_cleaner",
 		),
 		30*time.Second,
 		30*time.Second,
@@ -281,6 +286,10 @@ type hbirdDBWithCleaner struct {
 func (b hbirdDBWithCleaner) Close() error {
 	b.cleaner.Kill()
 	return b.dbCloser.Close()
+}
+
+func (b hbirdDBWithCleaner) GetCleaner() *periodic.Runner {
+	return b.cleaner
 }
 
 func NewRevocationStorage() revcache.RevCache {
