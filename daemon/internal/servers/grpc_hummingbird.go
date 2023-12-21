@@ -35,7 +35,7 @@ func (s *DaemonServer) StoreFlyovers(
 ) (*sdpb.StoreFlyoversResponse, error) {
 
 	// Translate flyovers from protobuf and store them.
-	err := s.FlyoverDB.StoreFlyovers(ctx, convertFlyoversFromPB(req.Flyovers))
+	err := s.FlyoverDB.StoreFlyovers(ctx, hummingbird.ConvertFlyoversFromPB(req.Flyovers))
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func (s *DaemonServer) ListFlyovers(
 	}
 
 	return &sdpb.ListFlyoversResponse{
-		Flyovers: convertFlyoversToPB(flyovers),
+		Flyovers: hummingbird.ConvertFlyoversToPB(flyovers),
 	}, nil
 }
 
@@ -81,7 +81,7 @@ func (s *DaemonServer) GetReservations(
 		Reservations: make([]*sdpb.Reservation, len(paths)),
 	}
 	for i := range res.Reservations {
-		res.Reservations[i], err = convertReservationToPB(rsvs[i])
+		res.Reservations[i], err = hummingbird.ConvertReservationToPB(rsvs[i])
 		if err != nil {
 			return nil, err
 		}
@@ -264,76 +264,6 @@ func flyoversToMap(flyovers []*hummingbird.Flyover) hummingbird.FlyoverMap {
 			Egress:  flyover.Egress,
 		}
 		ret[k] = append(ret[k], flyover)
-	}
-	return ret
-}
-
-func convertReservationToPB(r *hummingbird.Reservation) (*sdpb.Reservation, error) {
-	// Prepare the hummingbird path.
-	p := r.GetHummingbirdPath()
-	raw := make([]byte, p.Len())
-	if err := p.SerializeTo(raw); err != nil {
-		return nil, err
-	}
-
-	// Prepare the flyovers.
-	flyovers := r.FlyoverPerHopField()
-	numF, numHF := r.FlyoverAndHFCount()
-
-	return &sdpb.Reservation{
-		Raw:      raw,
-		Ratio:    float64(numF) / float64(numHF),
-		Flyovers: convertFlyoversToPB(flyovers),
-	}, nil
-}
-
-func convertFlyoverToPB(f *hummingbird.Flyover) *sdpb.Flyover {
-	if f == nil {
-		return nil
-	}
-	ret := &sdpb.Flyover{
-		Ia:        uint64(f.IA),
-		Ingress:   uint32(f.Ingress),
-		Egress:    uint32(f.Egress),
-		Bw:        uint32(f.Bw),
-		ResId:     f.ResID,
-		StartTime: f.StartTime,
-		Duration:  uint32(f.Duration),
-		Ak:        append([]byte{}, f.Ak[:]...),
-	}
-
-	return ret
-}
-func convertFlyoversToPB(flyovers []*hummingbird.Flyover) []*sdpb.Flyover {
-	ret := make([]*sdpb.Flyover, len(flyovers))
-	for i, f := range flyovers {
-		ret[i] = convertFlyoverToPB(f)
-	}
-	return ret
-}
-
-func convertFlyoverFromPB(f *sdpb.Flyover) *hummingbird.Flyover {
-	if f == nil {
-		return nil
-	}
-	ret := &hummingbird.Flyover{
-		BaseHop: hummingbird.BaseHop{
-			IA:      addr.IA(f.Ia),
-			Ingress: uint16(f.Ingress),
-			Egress:  uint16(f.Egress),
-		},
-		Bw:        uint16(f.Bw),
-		ResID:     f.ResId,
-		StartTime: f.StartTime,
-		Duration:  uint16(f.Duration),
-	}
-	copy(ret.Ak[:], f.Ak)
-	return ret
-}
-func convertFlyoversFromPB(flyovers []*sdpb.Flyover) []*hummingbird.Flyover {
-	ret := make([]*hummingbird.Flyover, len(flyovers))
-	for i, f := range flyovers {
-		ret[i] = convertFlyoverFromPB(f)
 	}
 	return ret
 }

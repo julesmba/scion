@@ -188,7 +188,7 @@ func TestStoreFlyovers(t *testing.T) {
 		},
 	}
 	req := &sdpb.StoreFlyoversRequest{
-		Flyovers: convertFlyoversToPB(expected),
+		Flyovers: hummingbird.ConvertFlyoversToPB(expected),
 	}
 	_, err := s.StoreFlyovers(ctx, req)
 	require.NoError(t, err)
@@ -241,7 +241,7 @@ func TestListFlyovers(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check response.
-	require.EqualValues(t, expected, convertFlyoversFromPB(res.Flyovers))
+	require.EqualValues(t, expected, hummingbird.ConvertFlyoversFromPB(res.Flyovers))
 }
 
 func getMockScionPaths(t require.TestingT, paths [][]any) []path.Path {
