@@ -78,17 +78,6 @@ func cheat_auth_key(res *Flyover) (Flyover, error) {
 	return *res, nil
 }
 
-// Requests a reservation for each given reservation.
-// Expects AS, Bw, StartTime, EndTime, Ingress and Egress to be filled in
-func RequestReservations(rs []Flyover) {
-
-}
-
-// Adds a reservation to be used for transmission
-func AddReservation(res Flyover) error {
-	return nil
-}
-
 // Converts a SCiON path to a Hummingbird path without adding any reservations
 // Relaces the SCiON dataplane path by a Hummingbird path
 func ConvertToHbirdPath(p snet.Path, timeStamp time.Time) (snet.Path, error) {

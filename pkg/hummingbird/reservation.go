@@ -85,6 +85,7 @@ func WithScionPath(p snet.Path, flyovers FlyoverMap) reservationModFcn {
 		// include the egress-to-ingress crossed over interfaces in the core AS.
 		interfaces := p.Metadata().Interfaces
 
+		// Add the first hop of the first segment now.
 		r.dec.PathMeta.SegLen[0] += 2
 		r.newHopSelectFlyover(
 			interfaces[0].IA,
@@ -95,20 +96,23 @@ func WithScionPath(p snet.Path, flyovers FlyoverMap) reservationModFcn {
 		)
 
 		// The dataplane path in c.dec contains inf fields and cross-over hops.
-		// Do each segment at a time to ignore the first hop of every segment except the first.
-		hopIdx := 1 // the index of the current hop in the dataplane.
-		for infIdx := 0; infIdx < r.dec.NumINF; infIdx, hopIdx = infIdx+1, hopIdx+1 {
-			// Preserve the hopcount locally, as we modify it inside the loop itself.
+		// Do each segment at a time to ignore the first hop of every segment
+		// (the first segment's first hop was already added above).
+		dpHopIdx := 1       // the index of the current hop in the dataplane.
+		interfaceCount := 1 // the index of the interfaces (no cross overs).
+		for infIdx := 0; infIdx < r.dec.NumINF; infIdx, dpHopIdx = infIdx+1, dpHopIdx+1 {
+			// Preserve the hop count locally, as we modify the path inside the loop itself.
 			hopCount := int(r.dec.Base.PathMeta.SegLen[infIdx]) / hummingbird.HopLines
-			for i := 1; i < hopCount; i, hopIdx = i+1, hopIdx+1 {
+			for i := 1; i < hopCount; i, dpHopIdx = i+1, dpHopIdx+1 {
 				r.dec.PathMeta.SegLen[infIdx] += 2
 				r.newHopSelectFlyover(
-					interfaces[len(r.hops)*2-1].IA,
-					uint16(interfaces[len(r.hops)*2-1].ID),
-					egressID(interfaces, len(r.hops)),
-					&r.dec.HopFields[hopIdx],
+					interfaces[interfaceCount*2-1].IA,
+					uint16(interfaces[interfaceCount*2-1].ID),
+					egressID(interfaces, interfaceCount),
+					&r.dec.HopFields[dpHopIdx],
 					flyovers,
 				)
+				interfaceCount++
 			}
 		}
 
