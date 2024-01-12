@@ -143,7 +143,7 @@ func (s *DaemonServer) getReservations(
 	if err != nil {
 		return nil, err
 	}
-	mFlyovers := flyoversToMap(flyovers)
+	mFlyovers := hummingbird.FlyoversToMap(flyovers)
 
 	// For each path, try to assign as many flyovers as possible.
 	reservations := make([]*hummingbird.Reservation, len(paths))
@@ -253,17 +253,4 @@ func linkTypeFromPB(lt sdpb.LinkType) snet.LinkType {
 	default:
 		return snet.LinkTypeUnset
 	}
-}
-
-func flyoversToMap(flyovers []*hummingbird.Flyover) hummingbird.FlyoverMap {
-	ret := make(hummingbird.FlyoverMap)
-	for _, flyover := range flyovers {
-		k := hummingbird.BaseHop{
-			IA:      flyover.IA,
-			Ingress: flyover.Ingress,
-			Egress:  flyover.Egress,
-		}
-		ret[k] = append(ret[k], flyover)
-	}
-	return ret
 }

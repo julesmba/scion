@@ -60,10 +60,6 @@ func NewReservation(opts ...reservationModFcn) (*Reservation, error) {
 // reservationModFcn is a options setting function for a reservation.
 type reservationModFcn func(*Reservation) error
 
-// FlyoverMap is a map between a flyover IA,ingress,egress and its corresponding collection of
-// flyover objects (each of them can have e.g. different starting times).
-type FlyoverMap map[BaseHop][]*Flyover
-
 // WithScionPath allows to build a Reservation based on the SCION path and flyovers passed as
 // arguments.
 // The flyovers are chosen from the map in order of appearance iff they are suitable, i.e. if
@@ -280,4 +276,21 @@ func egressID(ifaces []snet.PathInterface, idx int) uint16 {
 		return 0
 	}
 	return uint16(ifaces[i].ID)
+}
+
+// FlyoverMap is a map between a flyover IA,ingress,egress and its corresponding collection of
+// flyover objects (each of them can have e.g. different starting times).
+type FlyoverMap map[BaseHop][]*Flyover
+
+func FlyoversToMap(flyovers []*Flyover) FlyoverMap {
+	ret := make(FlyoverMap)
+	for _, flyover := range flyovers {
+		k := BaseHop{
+			IA:      flyover.IA,
+			Ingress: flyover.Ingress,
+			Egress:  flyover.Egress,
+		}
+		ret[k] = append(ret[k], flyover)
+	}
+	return ret
 }
