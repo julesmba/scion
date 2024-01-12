@@ -15,9 +15,6 @@
 package hummingbird
 
 import (
-	"crypto/aes"
-	"math/rand"
-	"strings"
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
@@ -26,8 +23,6 @@ import (
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
 	"github.com/scionproto/scion/pkg/snet"
 	snetpath "github.com/scionproto/scion/pkg/snet/path"
-	"github.com/scionproto/scion/private/keyconf"
-	"github.com/scionproto/scion/router/control"
 )
 
 // Describes a pair of Ingress and Egress interfaces in a specific AS
@@ -53,29 +48,6 @@ type Flyover struct {
 	StartTime uint32
 	// Duration is the duration of the reservation in seconds
 	Duration uint16
-}
-
-// Temporary cheating function until the system to request keys is available
-// return true if successful
-func cheat_auth_key(res *Flyover) (Flyover, error) {
-	// ResID is set by seller, pick random
-	res.ResID = uint32(rand.Int31() >> 10)
-
-	asstr := res.IA.String()
-	asstr = strings.ReplaceAll(asstr, ":", "_")
-	asstr = strings.TrimLeft(asstr, "1234567890-")
-	fpath := "gen/AS" + asstr + "/keys"
-	mkeys, err := keyconf.LoadMaster(fpath)
-	if err != nil {
-		return *res, err
-	}
-	key0 := control.DeriveHbirdSecretValue(mkeys.Key0)
-	prf, _ := aes.NewCipher(key0)
-	buffer := make([]byte, 16)
-	ak := hummingbird.DeriveAuthKey(prf, res.ResID, res.Bw, res.Ingress, res.Egress,
-		res.StartTime, res.Duration, buffer)
-	copy(res.Ak[:], ak[0:16])
-	return *res, nil
 }
 
 // Converts a SCiON path to a Hummingbird path without adding any reservations
