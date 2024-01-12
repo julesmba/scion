@@ -81,35 +81,34 @@ func WithScionPath(p snet.Path, flyovers FlyoverMap) reservationModFcn {
 		default:
 			return serrors.New("Unsupported path type")
 		}
+
 		// We use the path metadata to get the IA from it. This sequence of interfaces does not
 		// include the egress-to-ingress crossed over interfaces in the core AS.
 		interfaces := p.Metadata().Interfaces
 
 		// Add the first hop of the first segment now.
-		r.dec.PathMeta.SegLen[0] += 2
 		r.newHopSelectFlyover(
 			interfaces[0].IA,
 			0,
 			uint16(interfaces[0].ID),
-			&r.dec.HopFields[0],
+			0,
 			flyovers,
 		)
 
 		// The dataplane path in c.dec contains inf fields and cross-over hops.
 		// Do each segment at a time to ignore the first hop of every segment
 		// (the first segment's first hop was already added above).
-		dpHopIdx := 1       // the index of the current hop in the dataplane.
-		interfaceCount := 1 // the index of the interfaces (no cross overs).
+		dpHopIdx := uint8(1) // the index of the current hop in the dataplane.
+		interfaceCount := 1  // the index of the interfaces (no cross overs).
 		for infIdx := 0; infIdx < r.dec.NumINF; infIdx, dpHopIdx = infIdx+1, dpHopIdx+1 {
 			// Preserve the hop count locally, as we modify the path inside the loop itself.
 			hopCount := int(r.dec.Base.PathMeta.SegLen[infIdx]) / hummingbird.HopLines
 			for i := 1; i < hopCount; i, dpHopIdx = i+1, dpHopIdx+1 {
-				r.dec.PathMeta.SegLen[infIdx] += 2
 				r.newHopSelectFlyover(
 					interfaces[interfaceCount*2-1].IA,
 					uint16(interfaces[interfaceCount*2-1].ID),
 					egressID(interfaces, interfaceCount),
-					&r.dec.HopFields[dpHopIdx],
+					dpHopIdx,
 					flyovers,
 				)
 				interfaceCount++
@@ -131,8 +130,7 @@ func WithExistingHbirdPath(p *hummingbird.Decoded, flyovers []*Flyover) reservat
 			if flyover == nil {
 				continue
 			}
-			r.newHop(flyover.IA, flyover.Ingress, flyover.Egress,
-				&r.dec.HopFields[i], flyover)
+			r.newHop(flyover.IA, flyover.Ingress, flyover.Egress, uint8(i), flyover)
 		}
 		// For each hop field, clean up the ResStartTime as it's set when deriving the dataplane
 		// path.
@@ -231,7 +229,7 @@ func (r *Reservation) DeriveDataPlanePath(
 }
 
 func (r *Reservation) newHopSelectFlyover(ia addr.IA, in, eg uint16,
-	hf *hummingbird.FlyoverHopField, flyoverSet FlyoverMap) {
+	hfIdx uint8, flyoverSet FlyoverMap) {
 
 	// Look for a valid flyover.
 	now := uint32(r.now.Unix())
@@ -245,17 +243,25 @@ func (r *Reservation) newHopSelectFlyover(ia addr.IA, in, eg uint16,
 		if flyover.StartTime <= now && uint32(flyover.Duration) >= now-flyover.StartTime &&
 			flyover.Bw >= r.minBW {
 
-			r.dec.NumLines += 2
-			r.newHop(ia, in, eg, hf, flyover)
+			r.newHop(ia, in, eg, hfIdx, flyover)
 			break
 		}
 	}
 }
 
 func (r *Reservation) newHop(ia addr.IA, in, eg uint16,
-	hf *hummingbird.FlyoverHopField, flyover *Flyover) {
+	hfIdx uint8, flyover *Flyover) {
 
-	hf.Flyover = true
+	// Find the hop field from its index.
+	hf := &r.dec.HopFields[hfIdx]
+
+	if !hf.Flyover {
+		// Because we are setting a plain hop field as a flyover, it will use two more lines.
+		r.dec.NumLines += 2
+		r.dec.PathMeta.SegLen[r.dec.InfIndexForHFIndex(hfIdx)] += 2
+		hf.Flyover = true
+	}
+
 	hf.Bw = flyover.Bw
 	hf.Duration = flyover.Duration
 	hf.ResID = flyover.ResID

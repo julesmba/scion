@@ -8,6 +8,7 @@ import (
 
 	"github.com/scionproto/scion/pkg/slayers/path"
 	"github.com/scionproto/scion/pkg/slayers/path/hummingbird"
+	"github.com/scionproto/scion/pkg/slayers/path/scion"
 )
 
 var testInfoFields = []path.InfoField{
@@ -235,6 +236,44 @@ func TestDecodedDecodeFromBytesHbird(t *testing.T) {
 	assert.Equal(t, decodedHbirdTestPath, s)
 }
 
+func TestDecodedDecodeFromBytesNoFlyovers(t *testing.T) {
+	// p is the scion decoded path we would observe using the Tiny topology of the
+	// topology generator, when going from 111 to 112. This is one up segment with 2 hops, followed
+	// by a down segment with two hops as well. There is a cross over at core 110 gluing both.
+	p := &scion.Decoded{
+		Base: scion.Base{
+			PathMeta: scion.MetaHdr{
+				SegLen: [3]uint8{2, 2, 0},
+			},
+			NumINF:  2,
+			NumHops: 4,
+		},
+		InfoFields: []path.InfoField{
+			{}, // up
+			{}, // down
+		},
+		HopFields: []path.HopField{
+			{}, // 111: 0->41 up
+			{}, // 110: 1->0  up
+			{}, // 110: 0->2  down
+			{}, // 112: 1->0  down
+		},
+	}
+
+	// Create a hummingbird path from the scion one.
+	hbird := &hummingbird.Decoded{}
+	hbird.ConvertFromScionDecoded(*p) // SegLen will be [6,6,0] after this
+
+	// Check the hummingbird path is correct by serializing and deserializing it.
+	buf := make([]byte, hbird.Len())
+	err := hbird.SerializeTo(buf)
+	assert.NoError(t, err)
+	// Deserialize.
+	hbird = &hummingbird.Decoded{}
+	err = hbird.DecodeFromBytes(buf)
+	assert.NoError(t, err)
+}
+
 func TestDecodedSerializeDecodeHbird(t *testing.T) {
 	b := make([]byte, decodedHbirdTestPath.Len())
 	assert.NoError(t, decodedHbirdTestPath.SerializeTo(b))
@@ -291,6 +330,81 @@ func TestDecodedToRawHbird(t *testing.T) {
 	raw, err := decodedHbirdTestPath.ToRaw()
 	assert.NoError(t, err)
 	assert.Equal(t, rawHbirdTestPath, raw)
+}
+
+func TestInfIndexForHFIndex(t *testing.T) {
+	cases := map[string]struct {
+		path     hummingbird.Decoded
+		expected []uint8 // the INF indices of each hop field in the test case
+	}{
+		"empty": {
+			path: hummingbird.Decoded{
+				Base: hummingbird.Base{
+					PathMeta: hummingbird.MetaHdr{
+						SegLen: [3]uint8{0, 0, 0},
+					},
+				},
+			},
+		},
+		"one_segment_o": {
+			path: hummingbird.Decoded{
+				Base: hummingbird.Base{
+					PathMeta: hummingbird.MetaHdr{
+						SegLen: [3]uint8{3, 0, 0},
+					},
+				},
+				HopFields: []hummingbird.FlyoverHopField{
+					{Flyover: false},
+				},
+			},
+			expected: []uint8{0},
+		},
+		// one_segment_oxx means there is one segment with three hops, first is not flyover,
+		// second and third are.
+		"one_segment_oxx": {
+			path: hummingbird.Decoded{
+				Base: hummingbird.Base{
+					PathMeta: hummingbird.MetaHdr{
+						SegLen: [3]uint8{13, 0, 0},
+					},
+				},
+				HopFields: []hummingbird.FlyoverHopField{
+					{Flyover: false},
+					{Flyover: true},
+					{Flyover: true},
+				},
+			},
+			expected: []uint8{0, 0, 0},
+		},
+		"two_segments_o_oxx": {
+			path: hummingbird.Decoded{
+				Base: hummingbird.Base{
+					PathMeta: hummingbird.MetaHdr{
+						SegLen: [3]uint8{3, 13, 0},
+					},
+				},
+				HopFields: []hummingbird.FlyoverHopField{
+					{Flyover: false},
+					{Flyover: false},
+					{Flyover: true},
+					{Flyover: true},
+				},
+			},
+			expected: []uint8{0, 1, 1, 1},
+		},
+	}
+	for name, tc := range cases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			for i := range tc.path.HopFields {
+				got := tc.path.InfIndexForHFIndex(uint8(i))
+				assert.Equal(t, tc.expected[i], got)
+			}
+			assert.Panics(t, func() {
+				tc.path.InfIndexForHFIndex(uint8(len(tc.path.HopFields)) + 1)
+			})
+		})
+	}
 }
 
 func mkDecodedHbirdPath(t *testing.T, pcase hbirdPathCase,

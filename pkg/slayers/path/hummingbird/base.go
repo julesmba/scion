@@ -27,7 +27,7 @@ type Base struct {
 	PathMeta MetaHdr
 	// NumINF is the number of InfoFields in the path.
 	NumINF int
-	// NumLines is the number of 4 bytes lines in the path.
+	// NumLines is the number of 4 bytes lines in the path. NumLines = SegLen[i] for 0<=i<=2.
 	NumLines int
 }
 
@@ -60,7 +60,7 @@ func (s *Base) IncPath(n int) error {
 		return serrors.New("empty path cannot be increased")
 	}
 	if int(s.PathMeta.CurrHF) >= s.NumLines-n {
-		s.PathMeta.CurrHF = uint8(s.NumLines - n)
+		// s.PathMeta.CurrHF = uint8(s.NumLines - n)
 		return serrors.New("Incrementing path over end")
 	}
 	s.PathMeta.CurrHF += uint8(n)
@@ -83,11 +83,12 @@ func (s *Base) IsFirstHopAfterXover() bool {
 }
 
 // InfIndexForHF returns the segment to which the HopField hf belongs
-func (s *Base) InfIndexForHF(hf uint8) uint8 {
+// The argument hfLines is the line count until the first line of this hop field.
+func (s *Base) InfIndexForHF(hfLines uint8) uint8 {
 	switch {
-	case hf < s.PathMeta.SegLen[0]:
+	case hfLines < s.PathMeta.SegLen[0]:
 		return 0
-	case hf < s.PathMeta.SegLen[0]+s.PathMeta.SegLen[1]:
+	case hfLines < s.PathMeta.SegLen[0]+s.PathMeta.SegLen[1]:
 		return 1
 	default:
 		return 2
@@ -106,9 +107,9 @@ func (s *Base) Type() path.Type {
 
 // MetaHdr is the PathMetaHdr of a Hummingbird (data-plane) path type.
 type MetaHdr struct {
-	CurrINF   uint8
-	CurrHF    uint8
-	SegLen    [3]uint8
+	CurrINF   uint8    // Index of the current info field.
+	CurrHF    uint8    // Index of the current hop field.
+	SegLen    [3]uint8 // Length in bytes / 4 of each segment.
 	BaseTS    uint32
 	HighResTS uint32
 }

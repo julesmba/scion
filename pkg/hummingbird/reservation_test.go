@@ -17,10 +17,11 @@ package hummingbird_test
 import (
 	"testing"
 
-	"github.com/scionproto/scion/pkg/hummingbird"
-	"github.com/scionproto/scion/pkg/snet/path"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+
+	"github.com/scionproto/scion/pkg/hummingbird"
+	hbirddp "github.com/scionproto/scion/pkg/slayers/path/hummingbird"
+	"github.com/scionproto/scion/pkg/snet/path"
 )
 
 func TestReservationWithScionPath(t *testing.T) {
@@ -30,7 +31,7 @@ func TestReservationWithScionPath(t *testing.T) {
 		hummingbird.WithNow(fixedTime),
 		hummingbird.WithScionPath(scionPath, flyoverSliceToMap(testFlyoversInDB)),
 	)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Check that the derived path in the reservation is the same as hbirdPath (which is the
 	// expected one).
@@ -58,7 +59,7 @@ func TestReservationWithScionPathNoFlyovers(t *testing.T) {
 		hummingbird.WithNow(fixedTime),
 		hummingbird.WithScionPath(scionPath, nil), // nil == "no flyovers"
 	)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Should not have any flyovers, but the same amount of hop fields in the dataplane.
 	flyovers, hfs := r.FlyoverAndHFCount()
@@ -90,8 +91,63 @@ func TestReservationWithHbirdPath(t *testing.T) {
 			flyoverSliceToMap(testFlyoversInDB),
 		),
 	)
-	require.NoError(t, err)
-	require.Equal(t, expected, r)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, r)
+}
+
+func TestDeriveDataPlanePath(t *testing.T) {
+	// New reservation with a scion path.
+	scionPath := getScionSnetPath(t)
+	r, err := hummingbird.NewReservation(
+		hummingbird.WithNow(fixedTime),
+		hummingbird.WithScionPath(scionPath, flyoverSliceToMap(testFlyoversInDB)),
+	)
+	assert.NoError(t, err)
+
+	// Run twice.
+	for i := 0; i < 2; i++ {
+		// Derive dataplane path.
+		decoded := r.DeriveDataPlanePath(16, fixedTime)
+
+		// Check that it is a valid path.
+		buf := make([]byte, decoded.Len())
+		err = decoded.SerializeTo(buf)
+		assert.NoError(t, err)
+		// Deserialize to hummingbird Decoded.
+		decoded = &hbirddp.Decoded{}
+		err = decoded.DecodeFromBytes(buf)
+		assert.NoError(t, err)
+		// Deserialize to hummingbird Raw.
+		hbirdRaw := hbirddp.Raw{}
+		err = hbirdRaw.DecodeFromBytes(buf)
+		assert.NoError(t, err)
+	}
+}
+
+func TestDeriveDataPlanePathNoFlyovers(t *testing.T) {
+	// New reservation with a scion path.
+	scionPath := getScionSnetPath(t)
+	r, err := hummingbird.NewReservation(
+		hummingbird.WithNow(fixedTime),
+		hummingbird.WithScionPath(scionPath, nil),
+	)
+	assert.NoError(t, err)
+
+	// Derive dataplane path.
+	decoded := r.DeriveDataPlanePath(16, fixedTime)
+
+	// Check that it is a valid path.
+	buf := make([]byte, decoded.Len())
+	err = decoded.SerializeTo(buf)
+	assert.NoError(t, err)
+	// Deserialize to hummingbird Decoded.
+	decoded = &hbirddp.Decoded{}
+	err = decoded.DecodeFromBytes(buf)
+	assert.NoError(t, err)
+	// Deserialize to hummingbird Raw.
+	hbirdRaw := hbirddp.Raw{}
+	err = hbirdRaw.DecodeFromBytes(buf)
+	assert.NoError(t, err)
 }
 
 func flyoverSliceToMap(flyovers []hummingbird.Flyover) hummingbird.FlyoverMap {

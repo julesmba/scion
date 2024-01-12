@@ -174,7 +174,7 @@ var decodedHbirdTestPathFlyovers = &hummingbird.Decoded{
 		PathMeta: hummingbird.MetaHdr{
 			CurrINF: 0,
 			CurrHF:  0,
-			SegLen:  [3]uint8{10, 8, 0},
+			SegLen:  [3]uint8{10, 8, 0}, // [5+5, 5+3, 0]
 		},
 		NumINF:   2,
 		NumLines: 18,
