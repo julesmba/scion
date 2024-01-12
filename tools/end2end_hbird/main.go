@@ -70,7 +70,6 @@ var (
 	timeout                = &util.DurWrap{Duration: 10 * time.Second}
 	scionPacketConnMetrics = metrics.NewSCIONPacketConnMetrics()
 	scmpErrorsCounter      = scionPacketConnMetrics.SCMPErrors
-	flyovers               bool
 )
 
 func main() {
@@ -94,6 +93,7 @@ func realMain() int {
 		return 1
 	}
 	defer closeTracer()
+
 	if integration.Mode == integration.ModeServer {
 		server{}.run()
 		return 0
@@ -105,7 +105,6 @@ func realMain() int {
 func addFlags() {
 	flag.Var(&remote, "remote", "(Mandatory for clients) address to connect to")
 	flag.Var(timeout, "timeout", "The timeout for each attempt")
-	flag.BoolVar(&flyovers, "flyovers", true, "Enable Flyovers")
 }
 
 func validateFlags() {
@@ -256,6 +255,7 @@ func (c *client) run() int {
 	log.Info("Starting", "pair", pair)
 	defer log.Info("Finished", "pair", pair)
 	defer integration.Done(integration.Local.IA, remote.IA)
+
 	connFactory := &snet.DefaultPacketDispatcherService{
 		Dispatcher: reliable.NewDispatcher(""),
 		SCMPHandler: snet.DefaultSCMPHandler{
@@ -305,32 +305,22 @@ func (c *client) attemptRequest(n int) bool {
 
 		// TODO: using the reservations in the DB, create a hummingbird path
 
-		if !flyovers {
-			// Standard path, no reservations at all
-			path, err = hummingbird.ConvertToHbirdPath(path, time.Now())
-			if err != nil {
-				logger.Error("Error converting path to Hummingbird", "err", err)
-				return false
-			}
-			remote.Path = path.Dataplane()
-		} else {
-			hbirdClient, err := hummingbird.NewReservation(
-				hummingbird.WithScionPath(path, nil))
-			if err != nil {
-				logger.Error("Error converting path to Hummingbird", "err", err)
-				return false
-			}
-
-			decoded := hbirdClient.DeriveDataPlanePath(16, time.Now())
-			raw := snetpath.Hummingbird{
-				Raw: make([]byte, decoded.Len()),
-			}
-			err = decoded.SerializeTo(raw.Raw)
-			if err != nil {
-				logger.Error("Error assembling hummingbird path", "err", err)
-			}
-			remote.Path = raw
+		reservation, err := hummingbird.NewReservation(
+			hummingbird.WithScionPath(path, nil))
+		if err != nil {
+			logger.Error("Error converting path to Hummingbird", "err", err)
+			return false
 		}
+
+		decoded := reservation.DeriveDataPlanePath(16, time.Now())
+		raw := snetpath.Hummingbird{
+			Raw: make([]byte, decoded.Len()),
+		}
+		err = decoded.SerializeTo(raw.Raw)
+		if err != nil {
+			logger.Error("Error assembling hummingbird path", "err", err)
+		}
+		remote.Path = raw
 	}
 
 	// Send ping

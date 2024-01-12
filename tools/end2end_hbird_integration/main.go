@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"crypto/aes"
 	"flag"
 	"fmt"
 	"os"
@@ -26,11 +27,18 @@ import (
 	"time"
 
 	"github.com/scionproto/scion/pkg/addr"
+	"github.com/scionproto/scion/pkg/daemon"
+	"github.com/scionproto/scion/pkg/hummingbird"
 	"github.com/scionproto/scion/pkg/log"
+	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/private/util"
+	hbirddp "github.com/scionproto/scion/pkg/slayers/path/hummingbird"
 	"github.com/scionproto/scion/pkg/snet"
 	"github.com/scionproto/scion/private/app/feature"
+	"github.com/scionproto/scion/private/keyconf"
+	"github.com/scionproto/scion/private/topology"
+	"github.com/scionproto/scion/router/control"
 	"github.com/scionproto/scion/tools/integration"
 )
 
@@ -42,9 +50,6 @@ var (
 	name        string
 	cmd         string
 	features    string
-	epic        bool
-	flyovers    bool
-	partial     bool
 )
 
 func getCmd() (string, bool) {
@@ -76,9 +81,6 @@ func realMain() int {
 		"-timeout", timeout.String(),
 		"-local", integration.SrcAddrPattern + ":0",
 		"-remote", integration.DstAddrPattern + ":" + integration.ServerPortReplace,
-		fmt.Sprintf("-epic=%t", epic),
-		fmt.Sprintf("-flyovers=%t", flyovers),
-		fmt.Sprintf("-partial=%t", partial),
 	}
 	serverArgs := []string{
 		"-mode", "server",
@@ -97,6 +99,11 @@ func realMain() int {
 	pairs, err := getPairs()
 	if err != nil {
 		log.Error("Error selecting tests", "err", err)
+		return 1
+	}
+	err = addMockFlyovers(time.Now(), pairs)
+	if err != nil {
+		log.Error("Error adding mock flyovers", "err", err)
 		return 1
 	}
 	if err := runTests(in, pairs); err != nil {
@@ -119,9 +126,6 @@ func addFlags() {
 	flag.IntVar(&parallelism, "parallelism", 1, "How many end2end tests run in parallel.")
 	flag.StringVar(&features, "features", "",
 		fmt.Sprintf("enable development features (%v)", feature.String(&feature.Default{}, "|")))
-	flag.BoolVar(&epic, "epic", false, "Enable EPIC.")
-	flag.BoolVar(&flyovers, "flyovers", true, "Enable Flyovers")
-	flag.BoolVar(&partial, "partial", false, "If true, only subset of hops have flyovers")
 }
 
 // runTests runs the end2end hbird tests for all pairs. In case of an error the
@@ -193,7 +197,7 @@ func runTests(in integration.Integration, pairs []integration.IAPair) error {
 		// and inside bazel tests we easily have longer paths, therefore we
 		// create a temporary symlink to the directory where we put the socket
 		// file.
-		tmpDir, err := os.MkdirTemp("", "e2e_integration")
+		tmpDir, err := os.MkdirTemp("", "e2e_hbird_integration")
 		if err != nil {
 			return serrors.WrapStr("creating temp dir", err)
 		}
@@ -285,9 +289,6 @@ func clientTemplate(progressSock string) integration.Cmd {
 			"-timeout", timeout.String(),
 			"-local", integration.SrcAddrPattern + ":0",
 			"-remote", integration.DstAddrPattern + ":" + integration.ServerPortReplace,
-			fmt.Sprintf("-epic=%t", epic),
-			fmt.Sprintf("-flyovers=%t", flyovers),
-			fmt.Sprintf("-partial=%t", partial),
 		},
 	}
 	if len(features) != 0 {
@@ -357,6 +358,187 @@ func contains(ases *integration.ASList, core bool, ia addr.IA) bool {
 		}
 	}
 	return false
+}
+
+// addMockFlyovers creates and stores the necessary flyovers for the given pairs.
+// It uses the scion daemon to add the flyovers to the DB.
+func addMockFlyovers(now time.Time, pairs []integration.IAPair) error {
+	perAS, err := getTopoPerAS(pairs)
+	if err != nil {
+		return nil
+	}
+
+	flyovers, err := createMockFlyovers(perAS, now)
+	if err != nil {
+		return err
+	}
+
+	// Insert each flyover into the DB of each AS. Allow timeout.Duration per AS to do so.
+	wg := sync.WaitGroup{}
+	wg.Add(len(perAS))
+	errCh := make(chan error)
+	for ia, c := range perAS {
+		ia, c := ia, c
+		go func() {
+			defer log.HandlePanic()
+			defer wg.Done()
+			ctx, cancelF := context.WithTimeout(context.Background(), timeout.Duration)
+			defer cancelF()
+			errCh <- insertFlyoversInAS(ctx, ia, c, flyovers)
+		}()
+	}
+	// Collect any possible error and bail on the first non nil one.
+	go func() {
+		defer log.HandlePanic()
+		for errPerAS := range errCh {
+			if err != nil {
+				err = errPerAS
+			}
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+
+	if err != nil {
+		return serrors.WrapStr("at least one AS returned an error while inserting flyovers", err)
+	}
+	return nil
+}
+
+type topoPerAS struct {
+	ASDirName  string
+	Interfaces []common.IFIDType
+}
+
+func getTopoPerAS(pairs []integration.IAPair) (map[addr.IA]topoPerAS, error) {
+	m := make(map[addr.IA]topoPerAS)
+	for _, pair := range pairs {
+		ia := pair.Src.IA
+		if _, ok := m[ia]; ok {
+			continue
+		}
+
+		// Load their topology.
+		path := integration.GenFile(
+			filepath.Join(
+				addr.FormatAS(ia.AS(), addr.WithDefaultPrefix(), addr.WithFileSeparator()),
+				"topology.json",
+			),
+		)
+		topo, err := topology.FromJSONFile(path)
+		if err != nil {
+			return nil, serrors.WrapStr("loading topology", err, "ia", ia)
+		}
+
+		// Set the values for this AS.
+		m[ia] = topoPerAS{
+			ASDirName: addr.FormatAS(ia.AS(),
+				addr.WithDefaultPrefix(), addr.WithFileSeparator()),
+			Interfaces: topo.InterfaceIDs(),
+		}
+	}
+
+	return m, nil
+}
+
+func createMockFlyovers(
+	perAS map[addr.IA]topoPerAS,
+	now time.Time,
+) ([]*hummingbird.Flyover, error) {
+
+	// Per IA, insert a flyover with BW units of bandwidth for each interface pair.
+	// Note that BW has to be enough for one AS to send a ping to another.
+	const BW = uint16(10)
+	flyovers := make([]*hummingbird.Flyover, 0)
+	for ia, c := range perAS {
+		var resIDPerIA uint32 // reservation ID unique per IA
+		// Load master key for this ia. It is used to create the mock flyover, by deriving here
+		// the correct Ak that the border routers will check.
+		masterFile := integration.GenFile(filepath.Join(c.ASDirName, "keys"))
+		master0, err := keyconf.LoadMaster(masterFile)
+		if err != nil {
+			return nil, serrors.WrapStr("could not load master secret for IA", err, "ia", ia)
+		}
+
+		// Add the "itself" interface ID to the slice.
+		ifaces := append(c.Interfaces, 0)
+		// Create a flyover for each possible ingress->egress s.t. ingress <> egress
+		inToEgressesMap := ifIDSequenceToMap(ifaces)
+		for in, egressInterfaces := range inToEgressesMap {
+			for _, eg := range egressInterfaces {
+				f := hummingbird.Flyover{
+					BaseHop: hummingbird.BaseHop{
+						IA:      ia,
+						Ingress: uint16(in),
+						Egress:  uint16(eg),
+					},
+					Bw:        BW,
+					StartTime: util.TimeToSecs(now),
+					Duration:  60,         // 1 Minute
+					ResID:     resIDPerIA, // unique per ia
+				}
+
+				key0 := control.DeriveHbirdSecretValue(master0.Key0)
+				prf, _ := aes.NewCipher(key0)
+				buffer := make([]byte, 16)
+				ak := hbirddp.DeriveAuthKey(prf, f.ResID, f.Bw, f.Ingress, f.Egress,
+					f.StartTime, f.Duration, buffer)
+				copy(f.Ak[:], ak[0:16])
+
+				// Increment the reservation ID per AS to make it unique (per AS).
+				resIDPerIA++
+
+				flyovers = append(flyovers, &f)
+			}
+		}
+	}
+	return flyovers, nil
+}
+
+func insertFlyoversInAS(
+	ctx context.Context,
+	ia addr.IA,
+	config topoPerAS,
+	flyovers []*hummingbird.Flyover,
+) error {
+
+	daemonAddr, err := integration.GetSCIONDAddress(
+		integration.GenFile(integration.DaemonAddressesFile), ia)
+	if err != nil {
+		return serrors.WrapStr("getting the sciond address", err, "ia", ia)
+	}
+	conn, err := daemon.NewService(daemonAddr).Connect(ctx)
+	if err != nil {
+		return serrors.WrapStr("opening daemon connection", err, "ia", ia)
+	}
+
+	err = conn.StoreFlyovers(ctx, flyovers)
+	if err != nil {
+		return serrors.WrapStr("storing flyovers using daemon", err, "ia", ia)
+	}
+
+	err = conn.Close()
+	if err != nil {
+		return serrors.WrapStr("closing daemon connection", err, "ia", ia)
+	}
+
+	return nil
+}
+
+// ifIDSequenceToMap takes a slice of interfaces and returns a map where each ingress has
+// a list to egress interfaces from the slice.
+func ifIDSequenceToMap(ifSeq []common.IFIDType) map[common.IFIDType][]common.IFIDType {
+
+	m := make(map[common.IFIDType][]common.IFIDType, len(ifSeq))
+	for _, src := range ifSeq {
+		for _, dst := range ifSeq {
+			if src == dst {
+				continue
+			}
+			m[src] = append(m[src], dst)
+		}
+	}
+	return m
 }
 
 func logDir() string {
