@@ -474,8 +474,10 @@ func createMockFlyovers(
 					},
 					Bw:        BW,
 					StartTime: util.TimeToSecs(now),
-					Duration:  60,         // 1 Minute
-					ResID:     resIDPerIA, // unique per ia
+					// Duration:  60,         // 1 Minute
+					// deleteme: change to 1 minute again
+					Duration: 300,        // 1 Hour
+					ResID:    resIDPerIA, // unique per ia
 				}
 
 				key0 := control.DeriveHbirdSecretValue(master0.Key0)

@@ -298,21 +298,39 @@ func (c *client) attemptRequest(n int) bool {
 	defer span.Finish()
 	// Convert path to Hummingbird path
 	if path != nil {
+		// // This works:
+		// reservation, err := hummingbird.NewReservation(
+		// 	hummingbird.WithScionPath(path, nil))
+		// if err != nil {
+		// 	logger.Error("Error converting path to Hummingbird", "err", err)
+		// 	return false
+		// }
 
-		// TODO: buy flyovers for existing path(s). This is done by the user asynchronously
+		// deleteme this doesn't work and should:
+		// reservations, err := c.sdConn.GetReservations(ctx, integration.Local.IA, remote.IA, 1, true)
+		// if err != nil {
+		// 	logger.Error("getting reservations from daemon", "err", err)
+		// 	return false
+		// }
+		// logger.Info("deleteme", "reservation count", len(reservations))
+		// _ = reservations
+		// reservation := reservations[0]
 
-		// TODO: insert flyovers obtained from Mysten's library.
-
-		// TODO: using the reservations in the DB, create a hummingbird path
-
+		// deleteme this doesn't work and should:
+		flyovers, err := c.sdConn.ListFlyovers(ctx)
+		if err != nil {
+			logger.Error("listing flyovers", "err", err)
+			return false
+		}
 		reservation, err := hummingbird.NewReservation(
-			hummingbird.WithScionPath(path, nil))
+			hummingbird.WithScionPath(path, hummingbird.FlyoversToMap(flyovers)))
 		if err != nil {
 			logger.Error("Error converting path to Hummingbird", "err", err)
 			return false
 		}
 
 		decoded := reservation.DeriveDataPlanePath(16, time.Now())
+		logger.Info("deleteme", "reservation path", fmt.Sprintf("%+v", decoded))
 		raw := snetpath.Hummingbird{
 			Raw: make([]byte, decoded.Len()),
 		}
