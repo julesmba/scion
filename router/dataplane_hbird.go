@@ -1,3 +1,18 @@
+// Copyright 2020 Anapaya Systems
+// Copyright 2023 ETH Zurich
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package router
 
 import (
@@ -101,6 +116,24 @@ func (p *scionPacketProcessor) determinePeerHbird() (processResult, error) {
 	return processResult{}, err
 }
 
+func (p *scionPacketProcessor) validateHopExpiryHbird() (processResult, error) {
+	expiration := util.SecsToTime(p.infoField.Timestamp).
+		Add(path.ExpTimeToDuration(p.hopField.ExpTime))
+	expired := expiration.Before(time.Now())
+	if !expired {
+		return processResult{}, nil
+	}
+	log.Debug("SCMP: expired hop", "cons_dir", p.infoField.ConsDir, "if_id", p.ingressID,
+		"curr_inf", p.hbirdPath.PathMeta.CurrINF, "curr_hf", p.hbirdPath.PathMeta.CurrHF)
+	slowPathRequest := slowPathRequest{
+		scmpType: slayers.SCMPTypeParameterProblem,
+		code:     slayers.SCMPCodePathExpired,
+		pointer:  p.currentHopPointer(),
+		cause:    expiredHop,
+	}
+	return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
+}
+
 func (p *scionPacketProcessor) validateReservationExpiry() (processResult, error) {
 	startTime := util.SecsToTime(p.hbirdPath.PathMeta.BaseTS - uint32(p.flyoverField.ResStartTime))
 	endTime := startTime.Add(time.Duration(p.flyoverField.Duration) * time.Second)
@@ -156,81 +189,77 @@ func (p *scionPacketProcessor) getFlyoverInterfaces() (uint16, uint16, error) {
 	return ingress, egress, nil
 }
 
-func (p *scionPacketProcessor) verifyCurrentHbirdMAC() (processResult, error) {
+func (p *scionPacketProcessor) verifyHbirdScionMac() (processResult, error) {
+	scionMac := path.FullMAC(p.mac, p.infoField, p.hopField, p.macInputBuffer[:path.MACBufferSize])
+	verified := subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen], scionMac[:path.MacLen])
+	if verified == 0 {
+		log.Debug("SCMP: MAC verification failed", "expected", fmt.Sprintf(
+			"%x", scionMac[:path.MacLen]),
+			"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]),
+			"cons_dir", p.infoField.ConsDir,
+			"if_id", p.ingressID, "curr_inf", p.hbirdPath.PathMeta.CurrINF,
+			"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID)
+		slowPathRequest := slowPathRequest{
+			scmpType: slayers.SCMPTypeParameterProblem,
+			code:     slayers.SCMPCodeInvalidHopFieldMAC,
+			pointer:  p.currentHopPointer(),
+			cause:    macVerificationFailed,
+		}
+		return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
+	}
+	return processResult{}, nil
+}
+
+func (p *scionPacketProcessor) verifyHbirdFlyoverMac() (processResult, error) {
 	var flyoverMac []byte
 	var verified int
 
-	// Compute flyovermac
-	if p.flyoverField.Flyover {
-		ingress, egress, err := p.getFlyoverInterfaces()
+	ingress, egress, err := p.getFlyoverInterfaces()
+	if err != nil {
+		return processResult{}, err
+	}
+
+	ak := hummingbird.DeriveAuthKey(p.prf, p.flyoverField.ResID, p.flyoverField.Bw,
+		ingress, egress, p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime),
+		p.flyoverField.Duration,
+		p.macInputBuffer[path.MACBufferSize+hummingbird.FlyoverMacBufferSize:])
+	flyoverMac = hummingbird.FullFlyoverMac(ak, p.scionLayer.DstIA, p.scionLayer.PayloadLen,
+		p.flyoverField.ResStartTime, p.hbirdPath.PathMeta.HighResTS,
+		p.macInputBuffer[path.MACBufferSize:], p.hbirdXkbuffer)
+
+	if !p.hbirdPath.IsFirstHopAfterXover() {
+		err := p.updateHbirdNonConsDirIngressSegIDFlyover(flyoverMac)
 		if err != nil {
 			return processResult{}, err
 		}
-
-		ak := hummingbird.DeriveAuthKey(p.prf, p.flyoverField.ResID, p.flyoverField.Bw,
-			ingress, egress, p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime),
-			p.flyoverField.Duration,
-			p.macInputBuffer[path.MACBufferSize+hummingbird.FlyoverMacBufferSize:])
-		flyoverMac = hummingbird.FullFlyoverMac(ak, p.scionLayer.DstIA, p.scionLayer.PayloadLen,
-			p.flyoverField.ResStartTime, p.hbirdPath.PathMeta.HighResTS,
-			p.macInputBuffer[path.MACBufferSize:], p.hbirdXkbuffer)
 	}
-	// Perform updateHbirdNonConsDirIngressSegID
-	// This needs de-aggregated MAC but needs to be done before scionMac is computed
-	// Therefore, we check this here instead of before MAC computation like in standard SCiON
-	if !p.hbirdPath.IsFirstHopAfterXover() {
-		if p.flyoverField.Flyover {
-			err := p.updateHbirdNonConsDirIngressSegIDFlyover(flyoverMac)
-			if err != nil {
-				return processResult{}, err
-			}
-		} else {
-			if err := p.updateHbirdNonConsDirIngressSegID(); err != nil {
-				return processResult{}, err
-			}
-		}
-	}
-	// Compute scionMac
 	scionMac := path.FullMAC(p.mac, p.infoField, p.hopField, p.macInputBuffer[:path.MACBufferSize])
-	// Aggregate MACS and verify if necessary
-	if p.flyoverField.Flyover {
-		macXor(flyoverMac[:], scionMac[:], flyoverMac[:])
 
-		verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen],
-			flyoverMac[:path.MacLen])
-		if verified == 0 {
-			log.Debug("SCMP: Aggregate MAC verification failed",
-				"expected", fmt.Sprintf("%x", flyoverMac[:path.MacLen]),
-				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]),
-				"cons_dir", p.infoField.ConsDir,
-				"scionMac", fmt.Sprintf("%x", scionMac[:path.MacLen]),
-				"if_id", p.ingressID, "curr_inf", p.hbirdPath.PathMeta.CurrINF,
-				"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID,
-				"packet length", p.scionLayer.PayloadLen,
-				"dest", p.scionLayer.DstIA, "startTime", p.flyoverField.ResStartTime,
-				"highResTS", p.hbirdPath.PathMeta.HighResTS,
-				"ResID", p.flyoverField.ResID, "Bw", p.flyoverField.Bw,
-				"in", p.hopField.ConsIngress, "Eg", p.hopField.ConsEgress,
-				"start ak", p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime),
-				"Duration", p.flyoverField.Duration)
-		}
-	} else {
-		verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen], scionMac[:path.MacLen])
-		if verified == 0 {
-			log.Debug("SCMP: MAC verification failed", "expected", fmt.Sprintf(
-				"%x", scionMac[:path.MacLen]),
-				"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]),
-				"cons_dir", p.infoField.ConsDir,
-				"if_id", p.ingressID, "curr_inf", p.hbirdPath.PathMeta.CurrINF,
-				"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID)
-		}
+	macXor(flyoverMac[:], scionMac[:], flyoverMac[:])
+	verified = subtle.ConstantTimeCompare(p.hopField.Mac[:path.MacLen], flyoverMac[:path.MacLen])
+	if verified == 0 {
+		log.Debug("SCMP: Aggregate MAC verification failed",
+			"expected", fmt.Sprintf("%x", flyoverMac[:path.MacLen]),
+			"actual", fmt.Sprintf("%x", p.hopField.Mac[:path.MacLen]),
+			"cons_dir", p.infoField.ConsDir,
+			"scionMac", fmt.Sprintf("%x", scionMac[:path.MacLen]),
+			"if_id", p.ingressID, "curr_inf", p.hbirdPath.PathMeta.CurrINF,
+			"curr_hf", p.hbirdPath.PathMeta.CurrHF, "seg_id", p.infoField.SegID,
+			"packet length", p.scionLayer.PayloadLen,
+			"dest", p.scionLayer.DstIA, "startTime", p.flyoverField.ResStartTime,
+			"highResTS", p.hbirdPath.PathMeta.HighResTS,
+			"ResID", p.flyoverField.ResID, "Bw", p.flyoverField.Bw,
+			"in", p.hopField.ConsIngress, "Eg", p.hopField.ConsEgress,
+			"start ak", p.hbirdPath.PathMeta.BaseTS-uint32(p.flyoverField.ResStartTime),
+			"Duration", p.flyoverField.Duration)
 	}
+
 	// Add the full MAC to the SCION packet processor,
 	// such that hummingbird mac de-aggregation do not need to recalculate it.
 	// Do not overwrite cachedmac after doing xover, as it may contain a  flyovermac
-	if !p.effectiveXover {
-		p.cachedMac = scionMac
-	}
+	// This function is currently not called after a xover, so no need to check
+	// Keep in mind for future changes
+	p.cachedMac = scionMac
 
 	if verified == 0 {
 		slowPathRequest := slowPathRequest{
@@ -526,17 +555,33 @@ func (p *scionPacketProcessor) reverseFlyoverXover() error {
 	return nil
 }
 
-func (p *scionPacketProcessor) doHbirdXover() (processResult, error) {
+func (p *scionPacketProcessor) doHbirdXoverFlyover() (processResult, error) {
 	p.effectiveXover = true
-	inc := hummingbird.HopLines
-	if p.flyoverField.Flyover {
-		p.isFlyoverXover = true
-		inc = hummingbird.FlyoverLines
-		if r, err := p.deAggregateAndCacheMac(); err != nil {
-			return r, err
-		}
+	p.isFlyoverXover = true
+
+	if r, err := p.deAggregateAndCacheMac(); err != nil {
+		return r, err
 	}
-	if err := p.hbirdPath.IncPath(inc); err != nil {
+
+	if err := p.hbirdPath.IncPath(hummingbird.FlyoverLines); err != nil {
+		return processResult{}, serrors.WrapStr("incrementing path", err)
+	}
+
+	var err error
+	if p.flyoverField, err = p.hbirdPath.GetCurrentHopField(); err != nil {
+		return processResult{}, err
+	}
+	if p.infoField, err = p.hbirdPath.GetCurrentInfoField(); err != nil {
+		return processResult{}, err
+	}
+	p.hopField = p.flyoverField.HopField
+	return processResult{}, nil
+}
+
+func (p *scionPacketProcessor) doHbirdXoverBestEffort() (processResult, error) {
+	p.effectiveXover = true
+
+	if err := p.hbirdPath.IncPath(hummingbird.HopLines); err != nil {
 		// TODO parameter problem invalid path
 		return processResult{}, serrors.WrapStr("incrementing path", err)
 	}
@@ -591,7 +636,7 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 	if r, err := p.determinePeerHbird(); err != nil {
 		return r, err
 	}
-	if r, err := p.validateHopExpiry(); err != nil {
+	if r, err := p.validateHopExpiryHbird(); err != nil {
 		return r, err
 	}
 	if r, err := p.validateIngressID(); err != nil {
@@ -607,16 +652,20 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 		return r, err
 	}
 	if p.flyoverField.Flyover {
-		if r, err := p.validateReservationExpiry(); err != nil {
-			return r, err
-		}
+		return p.processHBIRDFlyover()
 	}
-	if r, err := p.verifyCurrentHbirdMAC(); err != nil {
+	return p.processHBIRDBestEffort()
+}
+
+func (p *scionPacketProcessor) processHBIRDFlyover() (processResult, error) {
+
+	if r, err := p.validateReservationExpiry(); err != nil {
 		return r, err
 	}
-	if p.hasPriority && p.flyoverField.Flyover {
-		p.validatePathMetaTimestamp()
+	if r, err := p.verifyHbirdFlyoverMac(); err != nil {
+		return r, err
 	}
+	p.validatePathMetaTimestamp()
 	if r, err := p.checkReservationBandwidth(); err != nil {
 		return r, err
 	}
@@ -639,25 +688,15 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 	// Outbound: pkts leaving the local IA.
 	// BRTransit: pkts leaving from the same BR different interface.
 	if !p.peering && p.hbirdPath.IsXover() {
-		if r, err := p.doHbirdXover(); err != nil {
+		if r, err := p.doHbirdXoverFlyover(); err != nil {
 			return r, err
 		}
 		if r, err := p.validateHopExpiry(); err != nil {
 			return r, serrors.WithCtx(err, "info", "after xover")
 		}
 		// verify the new hopField
-		if r, err := p.verifyCurrentHbirdMAC(); err != nil {
+		if r, err := p.verifyHbirdScionMac(); err != nil {
 			return r, err
-		}
-
-		if p.flyoverField.Flyover {
-			//TODO: can skip repeating those if/once moving previous flyover at Xover is confirmed
-			if r, err := p.validateReservationExpiry(); err != nil {
-				return r, serrors.WithCtx(err, "info", "after xover")
-			}
-			if p.hasPriority {
-				p.validatePathMetaTimestamp()
-			}
 		}
 	}
 	if r, err := p.validateEgressID(); err != nil {
@@ -678,8 +717,7 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 		if r, err := p.deAggregateMac(); err != nil {
 			return r, err
 		}
-		if p.flyoverField.Flyover && p.hbirdPath.IsFirstHopAfterXover() &&
-			!p.effectiveXover && !p.peering {
+		if p.hbirdPath.IsFirstHopAfterXover() && !p.effectiveXover && !p.peering {
 			if err := p.reverseFlyoverXover(); err != nil {
 				return processResult{}, err
 			}
@@ -696,6 +734,78 @@ func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 				return processResult{}, err
 			}
 		}
+		return processResult{OutAddr: a, OutPkt: p.rawPkt}, nil
+	}
+	errCode := slayers.SCMPCodeUnknownHopFieldEgress
+	if !p.infoField.ConsDir {
+		errCode = slayers.SCMPCodeUnknownHopFieldIngress
+	}
+	log.Debug("SCMP: cannot route")
+	slowPathRequest := slowPathRequest{
+		scmpType: slayers.SCMPTypeParameterProblem,
+		code:     errCode,
+		pointer:  p.currentHopPointer(),
+		cause:    cannotRoute,
+	}
+	return processResult{SlowPathRequest: slowPathRequest}, slowPathRequired
+}
+
+func (p *scionPacketProcessor) processHBIRDBestEffort() (processResult, error) {
+
+	if err := p.updateHbirdNonConsDirIngressSegID(); err != nil {
+		return processResult{}, err
+	}
+	if r, err := p.verifyHbirdScionMac(); err != nil {
+		return r, err
+	}
+	if r, err := p.handleHbirdIngressRouterAlert(); err != nil {
+		return r, err
+	}
+	// Inbound: pkts destined to the local IA.
+	if p.scionLayer.DstIA == p.d.localIA {
+		a, r, err := p.resolveInbound()
+		if err != nil {
+			return r, err
+		}
+		return processResult{OutAddr: a, OutPkt: p.rawPkt}, nil
+	}
+
+	// Outbound: pkts leaving the local IA.
+	// BRTransit: pkts leaving from the same BR different interface.
+	if !p.peering && p.hbirdPath.IsXover() {
+		if r, err := p.doHbirdXoverBestEffort(); err != nil {
+			return r, err
+		}
+		if r, err := p.validateHopExpiryHbird(); err != nil {
+			return r, serrors.WithCtx(err, "info", "after xover")
+		}
+		// verify the new hopField
+		if r, err := p.verifyHbirdScionMac(); err != nil {
+			return r, err
+		}
+	}
+	if r, err := p.validateEgressID(); err != nil {
+		return r, err
+	}
+	// handle egress router alert before we check if it's up because we want to
+	// send the reply anyway, so that trace route can pinpoint the exact link
+	// that failed.
+	if r, err := p.handleHbirdEgressRouterAlert(); err != nil {
+		return r, err
+	}
+	if r, err := p.validateEgressUp(); err != nil {
+		return r, err
+	}
+
+	egressID := p.egressInterface()
+	if _, ok := p.d.external[egressID]; ok {
+		if err := p.processHbirdEgress(); err != nil {
+			return processResult{}, err
+		}
+		return processResult{EgressID: egressID, OutPkt: p.rawPkt}, nil
+	}
+	// ASTransit: pkts leaving from another AS BR.
+	if a, ok := p.d.internalNextHops[egressID]; ok {
 		return processResult{OutAddr: a, OutPkt: p.rawPkt}, nil
 	}
 	errCode := slayers.SCMPCodeUnknownHopFieldEgress

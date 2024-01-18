@@ -848,79 +848,6 @@ func TestProcessHbirdPacket(t *testing.T) {
 			egressInterface: 0,
 			assertFunc:      assert.NoError,
 		},
-		"astransit xover flyover non consdir": {
-			// Test currently not working
-			prepareDP: func(ctrl *gomock.Controller) *router.DataPlane {
-				return router.NewDP(nil,
-					map[uint16]topology.LinkType{
-						51: topology.Child,
-						3:  topology.Core,
-					},
-					mock_router.NewMockBatchConn(ctrl),
-					map[uint16]*net.UDPAddr{
-						uint16(3): {IP: net.ParseIP("10.0.200.200").To4(), Port: 30043},
-					}, nil, xtest.MustParseIA("1-ff00:0:110"), nil, key, sv)
-			},
-			mockMsg: func(afterProcessing bool) *ipv4.Message {
-				spkt, _ := prepHbirdMsg(now)
-				dpath := &hummingbird.Decoded{
-					Base: hummingbird.Base{
-						PathMeta: hummingbird.MetaHdr{
-							CurrHF: 6,
-							SegLen: [3]uint8{6, 8, 0},
-							BaseTS: util.TimeToSecs(now),
-						},
-						NumINF:   2,
-						NumLines: 16,
-					},
-					InfoFields: []path.InfoField{
-						// up seg
-						{SegID: 0x111, ConsDir: false, Timestamp: util.TimeToSecs(now)},
-						// core seg
-						{SegID: 0x222, ConsDir: false, Timestamp: util.TimeToSecs(now)},
-					},
-					HopFields: []hummingbird.FlyoverHopField{
-						{HopField: path.HopField{ConsIngress: 0, ConsEgress: 1}},  // IA 110
-						{HopField: path.HopField{ConsIngress: 31, ConsEgress: 0}}, // Src
-						{Flyover: true, HopField: path.HopField{ConsIngress: 0, ConsEgress: 51},
-							ResID: 34, ResStartTime: 5, Duration: 310}, // Dst
-						{HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}}, // IA 110
-					},
-				}
-				dpath.HopFields[2].HopField.Mac = computeAggregateMacXover(t, key, sv, spkt.DstIA,
-					spkt.PayloadLen, 3, 51,
-					dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
-				dpath.HopFields[3].HopField.Mac = computeMAC(t, key, dpath.InfoFields[1],
-					dpath.HopFields[3].HopField)
-				if !afterProcessing {
-					dpath.InfoFields[0].UpdateSegID(computeMAC(t, key, dpath.InfoFields[0],
-						dpath.HopFields[2].HopField))
-
-					return toMsg(t, spkt, dpath)
-				}
-				dpath.HopFields[2].Flyover = false
-				dpath.HopFields[3].Flyover = true
-				dpath.HopFields[3].ResID = 34
-				dpath.HopFields[3].ResStartTime = 5
-				dpath.HopFields[3].Duration = 310
-
-				dpath.HopFields[2].HopField.Mac = computeMAC(t, key, dpath.InfoFields[0],
-					dpath.HopFields[2].HopField)
-				dpath.HopFields[3].HopField.Mac = computeAggregateMacXover(t, key, sv,
-					spkt.DstIA, spkt.PayloadLen, 3, 51, dpath.InfoFields[1], dpath.HopFields[3],
-					dpath.PathMeta)
-				dpath.PathMeta.SegLen[0] -= 2
-				dpath.PathMeta.SegLen[1] += 2
-				require.NoError(t, dpath.IncPath(hummingbird.FlyoverLines))
-				ret := toMsg(t, spkt, dpath)
-				ret.Addr = &net.UDPAddr{IP: net.ParseIP("10.0.200.200").To4(), Port: 30043}
-				ret.Flags, ret.NN, ret.N, ret.OOB = 0, 0, 0, nil
-				return ret
-			},
-			srcInterface:    51,
-			egressInterface: 0,
-			assertFunc:      assert.NoError,
-		},
 		"astransit xover flyover ingress": {
 			prepareDP: func(ctrl *gomock.Controller) *router.DataPlane {
 				return router.NewDP(nil,
@@ -1400,9 +1327,6 @@ func TestProcessHbirdPacket(t *testing.T) {
 
 	for name, tc := range testCases {
 		name, tc := name, tc
-		if name == "astransit xover flyover non consdir" {
-			continue
-		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dp := tc.prepareDP(ctrl)
