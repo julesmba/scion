@@ -88,3 +88,16 @@ func (d *DataPlane) ProcessPkt(ifID uint16, m *ipv4.Message) (ProcessResult, err
 func ExtractServices(s *services) map[addr.SVC][]*net.UDPAddr {
 	return s.m
 }
+
+type BenchmarkPacketProcessor struct {
+	p *scionPacketProcessor
+}
+
+func (d *DataPlane) NewBenchmarkPP() BenchmarkPacketProcessor {
+	return BenchmarkPacketProcessor{newPacketProcessor(d)}
+}
+
+func (p BenchmarkPacketProcessor) ProcessPkt(ifID uint16, m *ipv4.Message) error {
+	_, err := p.p.processPkt(m.Buffers[0], nil, ifID)
+	return err
+}
