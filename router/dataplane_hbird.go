@@ -625,7 +625,6 @@ func (p *scionPacketProcessor) processHbirdEgress() error {
 func (p *scionPacketProcessor) processHBIRD() (processResult, error) {
 	var ok bool
 	p.hbirdPath, ok = p.scionLayer.Path.(*hummingbird.Raw)
-	log.Debug("raw path", "path", fmt.Sprintf("%x", p.hbirdPath.Raw))
 	if !ok {
 		// TODO(lukedirtwalker) parameter problem invalid path?
 		return processResult{}, malformedPath
