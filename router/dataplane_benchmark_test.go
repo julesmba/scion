@@ -1,3 +1,18 @@
+// Copyright 2020 Anapaya Systems
+// Copyright 2023 ETH Zurich
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package router_test
 
 import (
@@ -26,9 +41,6 @@ import (
 const (
 	benchmarkPayloadLen = 10
 )
-
-// We measure the time necessary to process 100 packets (process function and reset function in between)
-// This allows to differentiate between different space usages of bandwidth (TODO: what sizes are relevant???)
 
 // standard SCION benchmark for reference
 func BenchmarkProcessScion(b *testing.B) {
@@ -252,7 +264,8 @@ func BenchmarkProcessHbirdFlyoverless(b *testing.B) {
 		},
 	}
 
-	dpath.HopFields[1].HopField.Mac = benchmarkScionMac(b, key, dpath.InfoFields[0], dpath.HopFields[1].HopField)
+	dpath.HopFields[1].HopField.Mac = benchmarkScionMac(b, key, dpath.InfoFields[0],
+		dpath.HopFields[1].HopField)
 	msg := toBenchmarkMsg(b, spkt, dpath)
 
 	backup := make([]byte, len(msg.Buffers[0]))
@@ -330,8 +343,10 @@ func BenchmarkProcessHbirdFlyoverlessXover(b *testing.B) {
 		},
 	}
 
-	dpath.HopFields[2].HopField.Mac = benchmarkScionMac(b, key, dpath.InfoFields[0], dpath.HopFields[2].HopField)
-	dpath.HopFields[3].HopField.Mac = benchmarkScionMac(b, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+	dpath.HopFields[2].HopField.Mac = benchmarkScionMac(b, key, dpath.InfoFields[0],
+		dpath.HopFields[2].HopField)
+	dpath.HopFields[3].HopField.Mac = benchmarkScionMac(b, key, dpath.InfoFields[1],
+		dpath.HopFields[3].HopField)
 	msg := toBenchmarkMsg(b, spkt, dpath)
 
 	backup := make([]byte, len(msg.Buffers[0]))
@@ -406,7 +421,8 @@ func BenchmarkProcessHbirdFlyover(b *testing.B) {
 
 		HopFields: []hummingbird.FlyoverHopField{
 			{HopField: path.HopField{ConsIngress: 0, ConsEgress: 2}},
-			{Flyover: true, HopField: path.HopField{ConsIngress: 7, ConsEgress: 31}, ResStartTime: 10, Duration: 180, Bw: 777},
+			{Flyover: true, HopField: path.HopField{ConsIngress: 7, ConsEgress: 31},
+				ResStartTime: 10, Duration: 180, Bw: 777},
 			{HopField: path.HopField{ConsIngress: 3, ConsEgress: 0}},
 			{HopField: path.HopField{ConsIngress: 0, ConsEgress: 6}},
 			{HopField: path.HopField{ConsIngress: 8, ConsEgress: 9}},
@@ -414,8 +430,8 @@ func BenchmarkProcessHbirdFlyover(b *testing.B) {
 		},
 	}
 
-	dpath.HopFields[1].HopField.Mac = benchmarkAggregateMac(b, key, sv, spkt.DstIA, benchmarkPayloadLen,
-		7, 31, dpath.InfoFields[0], dpath.HopFields[1], dpath.PathMeta)
+	dpath.HopFields[1].HopField.Mac = benchmarkAggregateMac(b, key, sv, spkt.DstIA,
+		benchmarkPayloadLen, 7, 31, dpath.InfoFields[0], dpath.HopFields[1], dpath.PathMeta)
 	msg := toBenchmarkMsg(b, spkt, dpath)
 
 	backup := make([]byte, len(msg.Buffers[0]))
@@ -499,9 +515,10 @@ func BenchmarkProcessHbirdFlyoverXoverBrtransit(b *testing.B) {
 		},
 	}
 
-	dpath.HopFields[2].HopField.Mac = benchmarkAggregateMac(b, key, sv, spkt.DstIA, benchmarkPayloadLen,
-		7, 31, dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
-	dpath.HopFields[3].HopField.Mac = benchmarkScionMac(b, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+	dpath.HopFields[2].HopField.Mac = benchmarkAggregateMac(b, key, sv, spkt.DstIA,
+		benchmarkPayloadLen, 7, 31, dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
+	dpath.HopFields[3].HopField.Mac = benchmarkScionMac(b, key, dpath.InfoFields[1],
+		dpath.HopFields[3].HopField)
 	msg := toBenchmarkMsg(b, spkt, dpath)
 
 	backup := make([]byte, len(msg.Buffers[0]))
@@ -582,9 +599,10 @@ func BenchmarkProcessHbirdFlyoverXoverAstransit(b *testing.B) {
 		},
 	}
 
-	dpath.HopFields[2].HopField.Mac = benchmarkAggregateMac(b, key, sv, spkt.DstIA, benchmarkPayloadLen,
-		7, 31, dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
-	dpath.HopFields[3].HopField.Mac = benchmarkScionMac(b, key, dpath.InfoFields[1], dpath.HopFields[3].HopField)
+	dpath.HopFields[2].HopField.Mac = benchmarkAggregateMac(b, key, sv, spkt.DstIA,
+		benchmarkPayloadLen, 7, 31, dpath.InfoFields[0], dpath.HopFields[2], dpath.PathMeta)
+	dpath.HopFields[3].HopField.Mac = benchmarkScionMac(b, key, dpath.InfoFields[1],
+		dpath.HopFields[3].HopField)
 	msg := toBenchmarkMsg(b, spkt, dpath)
 
 	backup := make([]byte, len(msg.Buffers[0]))
@@ -620,15 +638,17 @@ func toBenchmarkMsg(b *testing.B, spkt *slayers.SCION, dpath path.Path) *ipv4.Me
 	return ret
 }
 
-func benchmarkScionMac(b *testing.B, key []byte, info path.InfoField, hf path.HopField) [path.MacLen]byte {
+func benchmarkScionMac(b *testing.B, key []byte, info path.InfoField,
+	hf path.HopField) [path.MacLen]byte {
 	mac, err := scrypto.InitMac(key)
 	require.NoError(b, err)
 	buffer := [path.MacLen]byte{}
 	return path.MAC(mac, info, hf, buffer[:])
 }
 
-func benchmarkAggregateMac(b *testing.B, key, sv []byte, dst addr.IA, l, ingress, egress uint16, info path.InfoField,
-	hf hummingbird.FlyoverHopField, meta hummingbird.MetaHdr) [path.MacLen]byte {
+func benchmarkAggregateMac(b *testing.B, key, sv []byte, dst addr.IA, l, ingress, egress uint16,
+	info path.InfoField, hf hummingbird.FlyoverHopField,
+	meta hummingbird.MetaHdr) [path.MacLen]byte {
 
 	scionMac := benchmarkScionMac(b, key, info, hf.HopField)
 	block, err := aes.NewCipher(sv)
