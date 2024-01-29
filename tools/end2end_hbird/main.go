@@ -31,7 +31,6 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
-	"github.com/scionproto/scion/pkg/hummingbird"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -298,7 +297,18 @@ func (c *client) attemptRequest(n int) bool {
 	defer span.Finish()
 	// Convert path to Hummingbird path
 	if path != nil {
+
+		// This works:
+		// Directly query the scion daemon.
+		reservations, err := c.sdConn.GetReservations(ctx, integration.Local.IA, remote.IA, 1, true)
+		if err != nil {
+			logger.Error("getting reservations from daemon", "err", err)
+			return false
+		}
+		reservation := reservations[0]
+
 		// // This works:
+		// // Build with no flyovers.
 		// reservation, err := hummingbird.NewReservation(
 		// 	hummingbird.WithScionPath(path, nil))
 		// if err != nil {
@@ -306,31 +316,21 @@ func (c *client) attemptRequest(n int) bool {
 		// 	return false
 		// }
 
-		// deleteme this doesn't work and should:
-		// reservations, err := c.sdConn.GetReservations(ctx, integration.Local.IA, remote.IA, 1, true)
+		// // This works:
+		// // Get flyovers and build path.
+		// flyovers, err := c.sdConn.ListFlyovers(ctx)
 		// if err != nil {
-		// 	logger.Error("getting reservations from daemon", "err", err)
+		// 	logger.Error("listing flyovers", "err", err)
 		// 	return false
 		// }
-		// logger.Info("deleteme", "reservation count", len(reservations))
-		// _ = reservations
-		// reservation := reservations[0]
+		// reservation, err := hummingbird.NewReservation(
+		// 	hummingbird.WithScionPath(path, hummingbird.FlyoversToMap(flyovers)))
+		// if err != nil {
+		// 	logger.Error("Error converting path to Hummingbird", "err", err)
+		// 	return false
+		// }
 
-		// deleteme this doesn't work and should:
-		flyovers, err := c.sdConn.ListFlyovers(ctx)
-		if err != nil {
-			logger.Error("listing flyovers", "err", err)
-			return false
-		}
-		reservation, err := hummingbird.NewReservation(
-			hummingbird.WithScionPath(path, hummingbird.FlyoversToMap(flyovers)))
-		if err != nil {
-			logger.Error("Error converting path to Hummingbird", "err", err)
-			return false
-		}
-
-		decoded := reservation.DeriveDataPlanePath(16, time.Now())
-		logger.Info("deleteme", "reservation path", fmt.Sprintf("%+v", decoded))
+		decoded := reservation.DeriveDataPlanePath(113, time.Now())
 		raw := snetpath.Hummingbird{
 			Raw: make([]byte, decoded.Len()),
 		}

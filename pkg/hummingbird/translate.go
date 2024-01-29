@@ -46,10 +46,21 @@ func ConvertFlyoversToPB(flyovers []*Flyover) []*sdpb.Flyover {
 	return ret
 }
 
+// protobuf field Ak of Flyover. Used to check if the serialized flyover was a nil value or not.
+var akField = (&sdpb.Flyover{}).ProtoReflect().Descriptor().Fields().ByName("ak")
+
+// flyoverWasNil returns true if the Flyover protobuf message was nil.
+// Heuristically returns true if the field `Ak` was not set.
+func flyoverWasNil(f *sdpb.Flyover) bool {
+	return !f.ProtoReflect().Has(akField)
+}
+
 func ConvertFlyoverFromPB(f *sdpb.Flyover) *Flyover {
-	if f == nil {
+	if f == nil || flyoverWasNil(f) {
+		// No flyover.
 		return nil
 	}
+
 	ret := &Flyover{
 		BaseHop: BaseHop{
 			IA:      addr.IA(f.Ia),

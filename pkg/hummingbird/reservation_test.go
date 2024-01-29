@@ -61,16 +61,36 @@ func TestReservationWithScionPathNoFlyovers(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	// Should not have any flyovers, but the same amount of hop fields in the dataplane.
-	flyovers, hfs := r.FlyoverAndHFCount()
-	assert.Equal(t, 0, flyovers)
-	assert.Equal(t, decodedScionTestPath.NumHops, hfs)
+	// Should not have any flyoverCount, but the same amount of hop fields in the dataplane.
+	flyoverCount, hfCount := r.FlyoverAndHFCount()
+	assert.Equal(t, 0, flyoverCount)
+	assert.Equal(t, decodedScionTestPath.NumHops, hfCount)
 
 	// All hop fields must not be flyovers.
 	decoded := r.DeriveDataPlanePath(16, fixedTime)
 	for i, hf := range decoded.HopFields {
 		assert.False(t, hf.Flyover, "failed at index %d", i)
 	}
+
+	// Check reconstruction from parts.
+	// First create a reservation from no flyovers again.
+	rOrig, err := hummingbird.NewReservation(
+		hummingbird.WithNow(fixedTime),
+		hummingbird.WithScionPath(scionPath, nil), // nil == "no flyovers"
+	)
+	assert.NoError(t, err)
+
+	// Now create a reservation from an existing hummingbird path and flyovers.
+	flyovers := r.FlyoverPerHopField()
+	r2, err := hummingbird.NewReservation(
+		hummingbird.WithNow(fixedTime),
+		hummingbird.WithExistingHbirdPath(decoded, flyovers),
+	)
+	assert.NoError(t, err)
+	// And derive a hummingbird path from both reservations.
+	expected := rOrig.DeriveDataPlanePath(16, fixedTime)
+	got := r2.DeriveDataPlanePath(16, fixedTime)
+	assert.Equal(t, expected, got)
 }
 
 func TestReservationWithHbirdPath(t *testing.T) {
