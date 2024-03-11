@@ -116,7 +116,6 @@ func (s *Decoded) SerializeTo(b []byte) error {
 			}
 			offset += HopLen
 		}
-
 	}
 	return nil
 }
@@ -197,6 +196,20 @@ func (s *Decoded) ToRaw() (*Raw, error) {
 		return nil, err
 	}
 	return raw, nil
+}
+
+// InfIndexForHFIndex takes the index of the hop field in the HopFields slice and returns its
+// corresponding info field index in the InfoFields slice. Expected 0 <= hfIdx < len(HopFields).
+func (s *Decoded) InfIndexForHFIndex(hfIdx uint8) uint8 {
+	lineCount := uint8(0)
+	for i := uint8(0); i < hfIdx; i++ {
+		if s.HopFields[i].Flyover {
+			lineCount += FlyoverLines
+		} else {
+			lineCount += HopLines
+		}
+	}
+	return s.InfIndexForHF(lineCount)
 }
 
 // Converts a SCiON decoded path to a hummingbird decoded path

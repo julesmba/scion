@@ -1,5 +1,4 @@
-// Copyright 2018 ETH Zurich
-// Copyright 2019 ETH Zurich, Anapaya Systems
+// Copyright 2024 ETH Zurich
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +31,6 @@ import (
 
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/daemon"
-	"github.com/scionproto/scion/pkg/hummingbird"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
@@ -71,9 +69,6 @@ var (
 	timeout                = &util.DurWrap{Duration: 10 * time.Second}
 	scionPacketConnMetrics = metrics.NewSCIONPacketConnMetrics()
 	scmpErrorsCounter      = scionPacketConnMetrics.SCMPErrors
-	epic                   bool
-	flyovers               bool
-	partial                bool
 )
 
 func main() {
@@ -97,6 +92,7 @@ func realMain() int {
 		return 1
 	}
 	defer closeTracer()
+
 	if integration.Mode == integration.ModeServer {
 		server{}.run()
 		return 0
@@ -108,9 +104,6 @@ func realMain() int {
 func addFlags() {
 	flag.Var(&remote, "remote", "(Mandatory for clients) address to connect to")
 	flag.Var(timeout, "timeout", "The timeout for each attempt")
-	flag.BoolVar(&epic, "epic", false, "Enable EPIC.")
-	flag.BoolVar(&flyovers, "flyovers", true, "Enable Flyovers")
-	flag.BoolVar(&partial, "partial", false, "If true, only subset of hops have flyovers")
 }
 
 func validateFlags() {
@@ -261,6 +254,7 @@ func (c *client) run() int {
 	log.Info("Starting", "pair", pair)
 	defer log.Info("Finished", "pair", pair)
 	defer integration.Done(integration.Local.IA, remote.IA)
+
 	connFactory := &snet.DefaultPacketDispatcherService{
 		Dispatcher: reliable.NewDispatcher(""),
 		SCMPHandler: snet.DefaultSCMPHandler{
@@ -303,68 +297,48 @@ func (c *client) attemptRequest(n int) bool {
 	defer span.Finish()
 	// Convert path to Hummingbird path
 	if path != nil {
-		if !flyovers {
-			// Standard path, no reservations at all
-			path, err = hummingbird.ConvertToHbirdPath(path, time.Now())
-			if err != nil {
-				logger.Error("Error converting path to Hummingbird", "err", err)
-				return false
-			}
-			remote.Path = path.Dataplane()
-		} else if !partial {
-			// full path with reservations
-			hbirdClient := hummingbird.HummingbirdClient{}
-			if _, err := hbirdClient.PrepareHbirdPath(path); err != nil {
-				logger.Error("Error converting path to Hummingbird", "err", err)
-				return false
-			}
-			secs := uint32(time.Now().Unix())
-			res, err := hbirdClient.RequestReservationsAllHops(16, secs, 120)
-			if err != nil {
-				logger.Error("Error requesting reservations", "err", err)
-				return false
-			}
 
-			if err := hbirdClient.ApplyReservations(res); err != nil {
-				logger.Error("Error applying reservations", "err", err)
-			}
-
-			path, err = hbirdClient.FinalizePath(path, pingPayloadLen, time.Now())
-			if err != nil {
-				logger.Error("Error assembling hummingbird path", "err", err)
-			}
-			remote.Path = path.Dataplane()
-		} else {
-			//partial reservations, alternating resrved and not reserved
-			hbirdClient := hummingbird.HummingbirdClient{}
-			if _, err := hbirdClient.PrepareHbirdPath(path); err != nil {
-				logger.Error("Error converting path to Hummingbird", "err", err)
-				return false
-			}
-			ases := hbirdClient.GetPathASes()
-			n := len(ases)
-			for i := 1; i < n; i++ {
-				copy(ases[i:n-1], ases[i+1:n])
-				n--
-			}
-			ases = ases[:n]
-			secs := uint32(time.Now().Unix())
-			res, err := hummingbird.RequestReservationForASes(ases, 16, secs, 120)
-			if err != nil {
-				logger.Error("Error requesting reservations", "err", err)
-				return false
-			}
-
-			if err := hbirdClient.ApplyReservations(res); err != nil {
-				logger.Error("Error applying reservations", "err", err)
-			}
-
-			path, err = hbirdClient.FinalizePath(path, pingPayloadLen, time.Now())
-			if err != nil {
-				logger.Error("Error assembling hummingbird path", "err", err)
-			}
-			remote.Path = path.Dataplane()
+		// This works:
+		// Directly query the scion daemon.
+		reservations, err := c.sdConn.GetReservations(ctx, integration.Local.IA, remote.IA, 1, true)
+		if err != nil {
+			logger.Error("getting reservations from daemon", "err", err)
+			return false
 		}
+		reservation := reservations[0]
+
+		// // This works:
+		// // Build with no flyovers.
+		// reservation, err := hummingbird.NewReservation(
+		// 	hummingbird.WithScionPath(path, nil))
+		// if err != nil {
+		// 	logger.Error("Error converting path to Hummingbird", "err", err)
+		// 	return false
+		// }
+
+		// // This works:
+		// // Get flyovers and build path.
+		// flyovers, err := c.sdConn.ListFlyovers(ctx)
+		// if err != nil {
+		// 	logger.Error("listing flyovers", "err", err)
+		// 	return false
+		// }
+		// reservation, err := hummingbird.NewReservation(
+		// 	hummingbird.WithScionPath(path, hummingbird.FlyoversToMap(flyovers)))
+		// if err != nil {
+		// 	logger.Error("Error converting path to Hummingbird", "err", err)
+		// 	return false
+		// }
+
+		decoded := reservation.DeriveDataPlanePath(113, time.Now())
+		raw := snetpath.Hummingbird{
+			Raw: make([]byte, decoded.Len()),
+		}
+		err = decoded.SerializeTo(raw.Raw)
+		if err != nil {
+			logger.Error("Error assembling hummingbird path", "err", err)
+		}
+		remote.Path = raw
 	}
 
 	// Send ping
@@ -438,6 +412,7 @@ func (c *client) ping(ctx context.Context, n int, path snet.Path) error {
 }
 
 func (c *client) getRemote(ctx context.Context, n int) (snet.Path, error) {
+	// TODO: this function should return all possible paths.
 	if remote.IA.Equal(integration.Local.IA) {
 		remote.Path = snetpath.Empty{}
 		return nil, nil
@@ -475,20 +450,7 @@ func (c *client) getRemote(ctx context.Context, n int) (snet.Path, error) {
 	}
 
 	// Extract forwarding path from the SCION Daemon response.
-	// If the epic flag is set, try to use the EPIC path type header.
-	if epic {
-		scionPath, ok := path.Dataplane().(snetpath.SCION)
-		if !ok {
-			return nil, serrors.New("provided path must be of type scion")
-		}
-		epicPath, err := snetpath.NewEPICDataplanePath(scionPath, path.Metadata().EpicAuths)
-		if err != nil {
-			return nil, err
-		}
-		remote.Path = epicPath
-	} else {
-		remote.Path = path.Dataplane()
-	}
+	remote.Path = path.Dataplane()
 	remote.NextHop = path.UnderlayNextHop()
 	return path, nil
 }

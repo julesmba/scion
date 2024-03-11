@@ -40,6 +40,7 @@ import (
 	sdpb "github.com/scionproto/scion/pkg/proto/daemon"
 	"github.com/scionproto/scion/pkg/snet"
 	snetpath "github.com/scionproto/scion/pkg/snet/path"
+	"github.com/scionproto/scion/private/hummingbirddb"
 	"github.com/scionproto/scion/private/revcache"
 	"github.com/scionproto/scion/private/topology"
 	"github.com/scionproto/scion/private/trust"
@@ -60,6 +61,8 @@ type DaemonServer struct {
 	RevCache    revcache.RevCache
 	ASInspector trust.Inspector
 	DRKeyClient *drkey_daemon.ClientEngine
+
+	FlyoverDB hummingbirddb.DB
 
 	Metrics Metrics
 
